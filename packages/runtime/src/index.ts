@@ -15,7 +15,7 @@
  */
 export { ToolHost, defineToolHost, type Mode, type ToolHostConfig } from "./element.ts";
 export { RegistrySource, ToolNotFoundError, type RegistryEntry, type ToolSource } from "./sources.ts";
-export { Runner, isSuperseded, type RunHooks, type RunnerOptions } from "./runner.ts";
+export { Runner, isSuperseded, type Runnable, type RunHooks, type RunnerOptions } from "./runner.ts";
 export { ToolCrashError, ToolTimeoutError, WorkerUnavailableError, type Request, type Response } from "./protocol.ts";
 export { render, unknownOutput, type RenderOptions } from "./render/index.ts";
 export { STYLES, applyStyles } from "./styles.ts";

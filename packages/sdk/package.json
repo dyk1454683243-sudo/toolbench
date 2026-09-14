@@ -3,12 +3,45 @@
   "version": "0.1.0",
   "description": "The contract a Toolbench tool implements: types, manifest validation, version migration, and a fixture runner. No runtime dependencies, no DOM.",
   "license": "MIT",
+  "author": "Ahmed Elmalt",
+  "homepage": "https://github.com/eknowledger/toolbench#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eknowledger/toolbench.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/eknowledger/toolbench/issues"
+  },
+  "keywords": [
+    "toolbench",
+    "interactive",
+    "widget",
+    "tool",
+    "manifest",
+    "validation",
+    "fixtures",
+    "typescript",
+    "zero-dependencies"
+  ],
   "type": "module",
   "sideEffects": false,
-  "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  "engines": {
+    "node": ">=20"
   },
-  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -b"
   }

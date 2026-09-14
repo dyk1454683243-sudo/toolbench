@@ -20,7 +20,7 @@
  * it. That is why the manifest rejects `timeoutMs` there: a field that cannot do what it says is worse
  * than no field.
  */
-import type { InputValues, LoadedTool, Output } from "@toolbench/sdk";
+import type { InputValues, Manifest, Output, Tool } from "@toolbench/sdk";
 import { upgradeOutput } from "@toolbench/sdk";
 import { type Request, type Response, ToolCrashError, ToolTimeoutError, WorkerUnavailableError } from "./protocol.ts";
 
@@ -38,6 +38,19 @@ export interface RunnerOptions {
 	 * thread with a console warning rather than failing: a slow tool is better than a missing one.
 	 */
 	workerFactory?: () => Worker;
+}
+
+/**
+ * What the runner needs to run something.
+ *
+ * ⚠️ `tool` is optional, and that is the whole point. In worker mode the module is loaded *inside the
+ * worker*, so the main thread never calls it and must not download it: fetching it there cost a
+ * worker-mode tool two copies of itself, one of which was parsed and never used. A `LoadedTool` from
+ * a source satisfies this type, so passing one still works.
+ */
+export interface Runnable {
+	manifest: Manifest;
+	tool?: Tool;
 }
 
 export class Runner {
@@ -61,7 +74,7 @@ export class Runner {
 	 * Run a tool. Starting a run **cancels any run already in flight** — a form that fires on typing
 	 * would otherwise race, and the older answer sometimes wins.
 	 */
-	async run(loaded: LoadedTool, input: InputValues, hooks: RunHooks = {}): Promise<Output> {
+	async run(loaded: Runnable, input: InputValues, hooks: RunHooks = {}): Promise<Output> {
 		this.cancel();
 		const seq = ++this.#seq;
 		const useWorker = loaded.manifest.runtime.thread === "worker" && this.#options.workerFactory !== undefined;
@@ -96,15 +109,32 @@ export class Runner {
 
 	// --- main thread ------------------------------------------------------------------------------
 
-	async #runOnMainThread(loaded: LoadedTool, input: InputValues, hooks: RunHooks, seq: number): Promise<Output> {
+	async #runOnMainThread(loaded: Runnable, input: InputValues, hooks: RunHooks, seq: number): Promise<Output> {
 		const controller = new AbortController();
 		const progress = this.#progressFor(seq, hooks);
 		const promise = new Promise<Output>((resolve, reject) => {
 			this.#inflight = { seq, controller, resolve, reject, hooks, timer: undefined };
 		});
 
+		const tool = loaded.tool;
+		if (!tool) {
+			/*
+			 * Unreachable through the element, which loads the module exactly when this thread will call
+			 * it. Reachable by a host driving the Runner directly, so it says what to do rather than
+			 * failing on a property access.
+			 */
+			this.#fail(
+				seq,
+				new Error(
+					`"${loaded.manifest.id}" has no module on this thread. Pass the result of source.load(id), ` +
+						"or configure a workerFactory so it runs in a worker.",
+				),
+			);
+			return promise;
+		}
+
 		try {
-			const output = await loaded.tool.run(input, {
+			const output = await tool.run(input, {
 				signal: controller.signal,
 				progress: (fraction, partial) => {
 					if (!controller.signal.aborted) progress(fraction, partial);
@@ -122,7 +152,7 @@ export class Runner {
 
 	// --- worker -----------------------------------------------------------------------------------
 
-	async #runInWorker(loaded: LoadedTool, input: InputValues, hooks: RunHooks, seq: number): Promise<Output> {
+	async #runInWorker(loaded: Runnable, input: InputValues, hooks: RunHooks, seq: number): Promise<Output> {
 		const worker = this.#ensureWorker();
 		const controller = new AbortController();
 		const progress = this.#progressFor(seq, hooks);

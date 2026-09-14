@@ -32,11 +32,11 @@
  *  - there is always a Run button. Debounce-on-typing alone leaves a keyboard user no way to say
  *    "go now", and is wrong anyway for anything slow.
  */
-import type { InputSpec, InputValues, LoadedTool, Manifest, Output } from "@toolbench/sdk";
+import type { InputSpec, InputValues, Manifest, Output } from "@toolbench/sdk";
 import { el, fill } from "./dom.ts";
 import { render, unknownOutput } from "./render/index.ts";
 import { ToolCrashError, ToolTimeoutError, WorkerUnavailableError } from "./protocol.ts";
-import { isSuperseded, Runner } from "./runner.ts";
+import { isSuperseded, Runner, type Runnable } from "./runner.ts";
 import { type ToolSource } from "./sources.ts";
 import { applyStyles } from "./styles.ts";
 
@@ -72,7 +72,7 @@ export class ToolHost extends HTMLElement {
 
 	#root: ShadowRoot;
 	#runner: Runner | undefined;
-	#loaded: LoadedTool | undefined;
+	#loaded: Runnable | undefined;
 	#manifest: Manifest | undefined;
 	#values: InputValues = {};
 	#observer: IntersectionObserver | undefined;
@@ -209,7 +209,7 @@ export class ToolHost extends HTMLElement {
 		this.#loading = true;
 		this.#paint();
 		try {
-			this.#loaded = await config.source.load(this.#manifest.id);
+			this.#loaded = await this.#resolve(config);
 			this.#runner = new Runner(config.workerFactory ? { workerFactory: config.workerFactory } : {});
 			this.#loading = false;
 			this.#paint();
@@ -231,6 +231,21 @@ export class ToolHost extends HTMLElement {
 			this.#loading = false;
 			this.#showError(error);
 		}
+	}
+
+	/**
+	 * Get whatever this thread actually needs in order to run the tool.
+	 *
+	 * ⚠️ For a worker-mode tool with a worker available, that is the manifest and nothing else. The
+	 * module is imported inside the worker, so importing it here too downloaded and parsed a second
+	 * copy that was never called — doubling what a reader pays for every worker-mode tool. A browser
+	 * test asserts which of the two chunks gets fetched.
+	 */
+	async #resolve(cfg: ToolHostConfig): Promise<Runnable> {
+		const manifest = this.#manifest as Manifest;
+		const runsInWorker = manifest.runtime.thread === "worker" && cfg.workerFactory !== undefined;
+		if (runsInWorker) return { manifest };
+		return cfg.source.load(manifest.id);
 	}
 
 	// --- running ----------------------------------------------------------------------------------

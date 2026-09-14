@@ -81,6 +81,43 @@ describe("card mode — the facade", () => {
 		await page.close();
 	});
 
+	it("loads a worker tool's code into the worker only, never onto the main thread", async () => {
+		/*
+		 * Vite builds the worker in a separate Rollup pass, so every tool reachable from it is emitted
+		 * twice: `tool-<id>` for the main thread and `worker-tool-<id>` for the worker. Before those
+		 * names existed the worker's copies were all called `index-*.js`, and the duplication was
+		 * invisible — which is the argument for asserting an allowlist rather than a denylist.
+		 *
+		 * queue-explorer declares thread: "worker", so running it must fetch the worker copy and must
+		 * NOT fetch the main-thread copy. Fetching both would mean the code was parsed twice.
+		 */
+		const page = await browser.newPage();
+		const scripts: string[] = [];
+		page.on("request", (request) => {
+			if (request.resourceType() === "script") scripts.push(request.url());
+		});
+		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.locator("#host >> .tb-run").click();
+		await page.waitForFunction(() => document.querySelector("#host")?.shadowRoot?.querySelector(".tb-out-chart"), null, {
+			timeout: 15_000,
+		});
+
+		const loaded = (re: RegExp) => scripts.filter((url) => re.test(url));
+		assert.equal(
+			loaded(/\/assets\/worker-tool-queue-explorer-[^/]+\.js$/).length,
+			1,
+			`the worker's copy of the tool should be fetched exactly once: ${scripts.join(", ")}`,
+		);
+		assert.equal(
+			loaded(/\/assets\/tool-queue-explorer-[^/]+\.js$/).length,
+			0,
+			"the main-thread copy must never be fetched for a worker-mode tool",
+		);
+		assert.equal(loaded(/\/assets\/index-[^/]+\.js$/).length, 0, "no tool should load under an anonymous chunk name");
+		await page.close();
+	});
+
 	it("renders a seeded result as static markup, with no JavaScript run at all", async () => {
 		const page = await browser.newPage();
 		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });

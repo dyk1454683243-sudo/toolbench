@@ -251,14 +251,15 @@ Measured on the built bench with gzip, not estimated:
 
 | | Transfer |
 |---|---|
-| Runtime, once per page that uses a tool | 16.2 KB |
-| Worker entry, only for pages with a worker-mode tool | 2.8 KB |
-| `percentiles` tool chunk | 1.3 KB |
+| Runtime, once per page that uses a tool | 16.3 KB |
+| Worker entry, only for pages with a worker-mode tool | 2.7 KB |
+| `percentiles` tool chunk | 1.2 KB |
 | `queue-explorer` tool chunk | 1.2 KB |
 | A page with no tool on it | 0 bytes |
 | A card nobody opens | 0 bytes of tool code |
 
-Reproduce with `pnpm bench:build`, then gzip the files in `bench/dist/assets/`.
+Reproduce with `pnpm bench:build && node scripts/size-check.mjs`. CI runs the same check against a
+budget, so these numbers cannot rot.
 
 ## Browser and runtime support
 

@@ -690,6 +690,9 @@ build: {
 * **`manualChunks`** exists because every tool's entry file is named `index.ts`, so without it every
   chunk is called `index-<hash>.js`. That makes the network panel useless for the one thing the bench
   demonstrates, and it made a test count the page's own entry as a tool chunk.
+* **`worker.rollupOptions` needs the same treatment**, separately, because none of `build.rollupOptions`
+  applies to the worker's build. Skipping it leaves the worker's copies anonymous, which is how a
+  duplicate copy of every tool went unnoticed for a while.
 
 ### 11.4 Artifacts
 
@@ -736,15 +739,16 @@ when checking what loaded, because a denylist only catches the leaks you predict
 
 ## 13. Performance budget
 
-Measured with gzip on `bench/dist`, not estimated. Reproduce with `pnpm bench:build` and gzip the files
-in `bench/dist/assets`.
+Measured with gzip on `bench/dist`, not estimated. Reproduce with `pnpm bench:build && node
+scripts/size-check.mjs`, which is also a CI step: every figure below has a budget, so a number in this
+table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 16.2 KB | One chunk, once per page that uses a tool |
+| Runtime plus the bench's own wiring | 16.3 KB | One chunk, once per page that uses a tool |
 | Stylesheet | 0.7 KB | |
-| Worker entry | 2.8 KB | Only on pages with a worker-mode tool, and only after activation |
-| `percentiles` chunk | 1.3 KB | |
+| Worker entry | 2.7 KB | Only on pages with a worker-mode tool, and only after activation |
+| `percentiles` chunk | 1.2 KB | |
 | `queue-explorer` chunk | 1.2 KB | |
 | A page with no tool | 0 bytes | Nothing is imported |
 | A card nobody opens | 0 bytes of tool code | The facade is markup |
@@ -753,6 +757,12 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
+**One duplication to know about.** Vite builds a worker in a separate Rollup pass, so every tool
+reachable from the worker is emitted twice: `tool-<id>` for the main thread and `worker-tool-<id>` for
+the worker. A reader downloads one of the two, because a tool declares one thread, so the cost is deploy
+bytes rather than transfer bytes. It is named rather than hidden: before those names existed both copies
+were called `index-*.js`, and the second copy was invisible.
+
 ## 14. Defect register
 
 Every entry is a real defect found while building this, and the guard that now stops it recurring. It
@@ -760,6 +770,8 @@ is here because the guards look arbitrary without it.
 
 | Defect | How it appeared | Guard |
 |---|---|---|
+| Worker-mode tools were downloaded twice by the reader | The element called `source.load()` for every tool, but in worker mode the runner only ever reads `loaded.manifest`. So the main thread fetched and parsed a module it never called, doubling what a worker-mode tool costs | `Runner` takes a `Runnable` whose `tool` is optional, and the element loads the module only when this thread will call it. A browser test asserts which of the two chunks is fetched, and that neither loads under an anonymous name |
+| The worker's copies of every tool were called `index-*.js` | The duplication above was invisible in the network panel, and a chunk-name assertion could not see it | `worker.rollupOptions.output.manualChunks` names them `worker-tool-<id>`, so the panel says which thread ran |
 | A throttled progress frame landed after the final result and overwrote it | The chart appeared for one frame and vanished. Status said "chart, 2 series" while the screen showed the partial fields | The staleness check runs at animation-frame flush time, not at call time. Browser test asserts the chart survives a second after settling |
 | Series colour classes set `stroke` and `fill` together | Equal specificity, later in the sheet, so they beat `fill: none` and every line drew as a filled blob | One custom property per series; the shape decides whether it is a stroke or a fill |
 | The form was painted before the tool's module arrived | Run existed and did nothing. Invisible locally, a dead control on a slow connection | `#loading` keeps the facade up until the module lands. Browser test asserts the status is "press Run" only once the form exists |
