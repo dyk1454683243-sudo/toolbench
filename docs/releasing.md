@@ -137,22 +137,32 @@ npm login
 npm org create toolbench      # or create it at npmjs.com/org/create
 ```
 
-**2. The token.** Create a **granular access token** at npmjs.com with write access to the `@toolbench`
-scope, and add it as a repository secret named `NPM_TOKEN`:
+**2. Authentication.** Two ways, and the workflow supports both. `changesets/action` prefers OIDC when
+it is available, so the token is a fallback rather than the plan.
+
+*Trusted publishing (preferred, no stored secret).* Configure `eknowledger/toolbench` and
+`.github/workflows/release.yml` as the trusted publisher for each package on npmjs.com. It is configured
+per package, so the package has to exist first: publish 0.1.0 by hand (§8), then switch, then no secret
+is stored anywhere.
+
+*Token (needed for the very first publish, or instead of the above).* Create a **granular access token**
+with write access to the `@toolbench` scope, give it an expiry, and add it as a repository secret:
 
 ```sh
 gh secret set NPM_TOKEN
 ```
 
-Prefer a granular token scoped to this org over a classic automation token, and give it an expiry.
+**3. Turn publishing on.** The workflow will not publish until you say so:
 
-**Then switch to trusted publishing.** npm supports OIDC trusted publishers, which lets this workflow
-authenticate as itself with no stored secret at all. It has to be configured per package, so the package
-must exist first, which is why the first publish uses a token. After 0.1.0 is out: set
-`eknowledger/toolbench` + `release.yml` as the trusted publisher on both packages, then delete
-`NPM_TOKEN` and the `NODE_AUTH_TOKEN` line. That is tracked as an issue.
+```sh
+gh variable set PUBLISH_TO_NPM --body true
+```
 
-**Provenance** is already on (`id-token: write` plus `NPM_CONFIG_PROVENANCE`). It publishes a signed
+Without this, the release job still runs and still opens release PRs, but never publishes. That gate
+exists because a release workflow with no npm identity fails on every push to `main`, and a permanently
+red `main` is worse than a switch, since it teaches everyone to stop reading the crosses.
+
+**4. Provenance** is already on (`id-token: write` plus `NPM_CONFIG_PROVENANCE`). It publishes a signed
 attestation tying the tarball to this commit and this workflow, and npm shows it on the package page. It
 is free and it is the main defence a small package has against someone shipping a tarball that does not
 match the source.

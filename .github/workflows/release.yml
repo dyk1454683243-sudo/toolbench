@@ -9,7 +9,8 @@
 #
 # Setup this needs once, see docs/releasing.md:
 #   - an npm org named `toolbench` (free for public packages)
-#   - a repository secret NPM_TOKEN holding a granular automation token
+#   - either a trusted publisher on npm, or a repository secret NPM_TOKEN
+#   - a repository variable PUBLISH_TO_NPM set to "true"
 name: release
 
 on:
@@ -54,8 +55,30 @@ jobs:
           pnpm test
           pnpm build
 
+      # ── Two paths, chosen by the repository variable PUBLISH_TO_NPM ──────────────────────────────
+      #
+      # Publishing stays off until npm is actually set up (the org, and either a token or a trusted
+      # publisher). Without this gate every push to main fails on ENEEDAUTH, which trains everyone to
+      # ignore a red cross on main. Turn it on with:
+      #
+      #     gh variable set PUBLISH_TO_NPM --body true
+      #
+      # Versioning runs either way, so release PRs accumulate correctly before the first publish.
+
+      - name: Version only (publishing not enabled yet)
+        id: version_only
+        if: vars.PUBLISH_TO_NPM != 'true'
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          commit: "chore: version packages"
+          title: "Release: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Version or publish
         id: changesets
+        if: vars.PUBLISH_TO_NPM == 'true'
         uses: changesets/action@v1
         with:
           # `pnpm release` builds first, then publishes. Building inside the release script rather
@@ -66,20 +89,35 @@ jobs:
           title: "Release: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only needed until trusted publishing is configured on both packages. changesets/action
+          # prefers OIDC when it is available, so this can be deleted rather than rotated.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
       - name: Say what happened
+        if: always()
         env:
+          ENABLED: ${{ vars.PUBLISH_TO_NPM }}
           PUBLISHED: ${{ steps.changesets.outputs.published }}
           PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
         run: |
-          if [ "$PUBLISHED" = "true" ]; then
-            echo "### Published" >> "$GITHUB_STEP_SUMMARY"
-            echo '```json' >> "$GITHUB_STEP_SUMMARY"
-            echo "$PACKAGES" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "No publish this run. Either a release PR is waiting to be merged, or there was" \
-                 "nothing pending." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            if [ "$ENABLED" != "true" ]; then
+              echo "### Publishing is not enabled"
+              echo
+              echo "Versioning ran; nothing was published. To turn publishing on, see"
+              echo "docs/releasing.md section 6, then:"
+              echo
+              echo '    gh variable set PUBLISH_TO_NPM --body true'
+            elif [ "$PUBLISHED" = "true" ]; then
+              echo "### Published"
+              echo
+              echo '```json'
+              echo "$PACKAGES"
+              echo '```'
+            else
+              echo "### Nothing to publish"
+              echo
+              echo "Either a release PR is waiting to be merged, or there was nothing pending."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
