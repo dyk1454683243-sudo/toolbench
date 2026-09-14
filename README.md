@@ -324,6 +324,7 @@ pnpm test:bench     # the same bench, driven by Chrome
 | [docs/releasing.md](docs/releasing.md) | How versions are decided and how a release reaches npm |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, the loop, and which opinions are load bearing |
 | [SECURITY.md](SECURITY.md) | The threat model, and what is in scope to report |
+| [ROADMAP.md](ROADMAP.md) | What is planned, in what order, and why that order |
 
 ## Licence
 
