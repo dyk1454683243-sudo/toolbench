@@ -1,0 +1,61 @@
+[
+  {
+    "name": "ρ ≥ 1 has no steady state, and the tool says so against the input that caused it",
+    "input": { "arrivals": 1200, "service": 1, "samples": 1000, "seed": 1 },
+    "expect": {
+      "kind": "error",
+      "message": "At 1200 arrivals/s and 1 ms of service, one server can handle 1000/s. The queue never drains, so there is no steady state to report — lower the arrival rate or speed up service.",
+      "input": "arrivals"
+    }
+  },
+  {
+    "name": "the closed form at 80% utilisation — every value here is hand-checkable from the M/M/1 formulas",
+    "input": { "arrivals": 800, "service": 1, "samples": 1000, "seed": 42 },
+    "match": "subset",
+    "why": "asserts the analytic half exactly; the simulated half is a separate case, and the chart is covered by the convergence unit test",
+    "fieldCount": 7,
+    "expect": {
+      "kind": "fields",
+      "fields": [
+        { "label": "utilisation", "value": "0.800", "note": "ρ = arrivals ÷ capacity" },
+        { "label": "time in system", "value": "5.00 ms", "group": "Formula" },
+        { "label": "time waiting", "value": "4.00 ms", "group": "Formula" },
+        { "label": "jobs in system", "value": "4.00", "group": "Formula" },
+        { "label": "jobs waiting", "value": "3.20", "group": "Formula" }
+      ]
+    }
+  },
+  {
+    "name": "the simulation is a pure function of its inputs — same seed, same answer, forever",
+    "input": { "arrivals": 800, "service": 1, "samples": 1000, "seed": 42 },
+    "match": "subset",
+    "why": "pins the seeded simulation; if this value ever changes, the generator or the recursion changed and that is worth knowing",
+    "fieldCount": 7,
+    "expect": {
+      "kind": "fields",
+      "fields": [
+        { "label": "time in system", "value": "4.47 ms", "group": "Simulation", "note": "1,000 samples, seed 42" },
+        { "label": "difference", "value": "-10.6%", "group": "Simulation", "tone": "warn", "note": "more samples would narrow this" }
+      ]
+    }
+  },
+  {
+    "name": "a chart comes back with both series and the marker for where you are",
+    "input": { "arrivals": 800, "service": 1, "samples": 1000, "seed": 42 },
+    "match": "subset",
+    "why": "the chart's numeric content is checked by the convergence test; this asserts its shape reaches the renderer",
+    "expect": {
+      "kind": "series",
+      "chart": {
+        "xLabel": "Utilisation",
+        "yLabel": "Time in system",
+        "yUnit": "ms",
+        "xUnit": "ρ",
+        "x": [],
+        "series": [],
+        "annotations": [{ "x": 0.8, "label": "you are here (ρ 0.80)" }],
+        "yLabelRight": "Jobs in system"
+      }
+    }
+  }
+]

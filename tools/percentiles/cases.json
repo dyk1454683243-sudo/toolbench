@@ -1,0 +1,123 @@
+[
+  {
+    "name": "ten integers, nearest rank — every number below was worked out by hand, not captured from the implementation",
+    "input": { "values": "1 2 3 4 5 6 7 8 9 10", "method": "nearest" },
+    "expect": {
+      "kind": "group",
+      "parts": [
+        {
+          "kind": "fields",
+          "fields": [
+            { "label": "count", "value": "10" },
+            { "label": "p50", "value": "5" },
+            { "label": "p99", "value": "10" },
+            { "label": "max", "value": "10" },
+            { "label": "mean", "value": "5.50", "note": "shown for contrast — it is not a percentile" },
+            { "label": "min", "value": "1" }
+          ]
+        },
+        {
+          "kind": "table",
+          "caption": "The same data under both definitions. A comparison across systems using different ones means nothing.",
+          "columns": [
+            { "label": "", "mono": true },
+            { "label": "Nearest rank", "align": "end", "mono": true },
+            { "label": "Linear", "align": "end", "mono": true },
+            { "label": "Difference", "align": "end", "mono": true }
+          ],
+          "rows": [
+            [
+              { "text": "p50", "mono": true },
+              { "text": "5", "mono": true },
+              { "text": "5.50", "mono": true },
+              { "text": "+10.0%", "mono": true, "tone": "warn" }
+            ],
+            [
+              { "text": "p90", "mono": true },
+              { "text": "9", "mono": true },
+              { "text": "9.10", "mono": true },
+              { "text": "+1.1%", "mono": true, "tone": "normal" }
+            ],
+            [
+              { "text": "p95", "mono": true },
+              { "text": "10", "mono": true },
+              { "text": "9.55", "mono": true },
+              { "text": "-4.5%", "mono": true, "tone": "normal" }
+            ],
+            [
+              { "text": "p99", "mono": true },
+              { "text": "10", "mono": true },
+              { "text": "9.91", "mono": true },
+              { "text": "-0.9%", "mono": true, "tone": "normal" }
+            ],
+            [
+              { "text": "p99.9", "mono": true },
+              { "text": "10", "mono": true },
+              { "text": "9.99", "mono": true },
+              { "text": "-0.1%", "mono": true, "tone": "normal" }
+            ]
+          ]
+        },
+        {
+          "kind": "fields",
+          "fields": [
+            { "label": "true p99", "value": "10", "group": "Averaging percentiles", "note": "of all measurements pooled" },
+            { "label": "averaged p99", "value": "7", "group": "Averaging percentiles", "note": "mean of four chunks' p99 — what a dashboard usually shows" },
+            { "label": "error", "value": "-30.0%", "group": "Averaging percentiles", "tone": "bad", "note": "how wrong the averaged figure is" }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "linear interpolation returns a point between measurements, not one of them",
+    "input": { "values": "1 2 3 4 5 6 7 8 9 10", "method": "linear" },
+    "match": "subset",
+    "why": "this case is about the two summary percentiles only; the full group is asserted exactly by the case above",
+    "fieldCount": 6,
+    "expect": {
+      "kind": "fields",
+      "fields": [
+        { "label": "p50", "value": "5.50" },
+        { "label": "p99", "value": "9.91" }
+      ]
+    }
+  },
+  {
+    "name": "a stray word is reported at the character where it starts, and blamed on the right input",
+    "input": { "values": "1 2 oops 4", "method": "nearest" },
+    "expect": {
+      "kind": "error",
+      "message": "\"oops\" is not a number. Separate measurements with spaces, commas or newlines.",
+      "input": "values",
+      "at": 4,
+      "len": 1
+    }
+  },
+  {
+    "name": "no measurements is a question, not a crash",
+    "input": { "values": "   ", "method": "nearest" },
+    "expect": {
+      "kind": "error",
+      "message": "No measurements yet — paste some numbers.",
+      "input": "values"
+    }
+  },
+  {
+    "name": "one measurement is its own every percentile",
+    "input": { "values": "42", "method": "linear" },
+    "match": "subset",
+    "why": "asserts the n=1 edge case, where interpolation has nothing to interpolate between",
+    "fieldCount": 6,
+    "expect": {
+      "kind": "fields",
+      "fields": [
+        { "label": "count", "value": "1" },
+        { "label": "p50", "value": "42" },
+        { "label": "p99", "value": "42" },
+        { "label": "min", "value": "42" },
+        { "label": "max", "value": "42" }
+      ]
+    }
+  }
+]

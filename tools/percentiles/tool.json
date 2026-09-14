@@ -1,0 +1,41 @@
+{
+  "sdk": 1,
+  "id": "percentiles",
+  "name": "Percentiles",
+  "blurb": "Paste latencies; get p50 to p99.9 — and see why the two common definitions disagree.",
+  "version": "1.0.0",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "main" },
+  "card": "live",
+  "cardFields": 4,
+  "kinds": ["group", "fields", "table", "error"],
+  "help": "README.md",
+  "tags": ["statistics", "performance"],
+  "inputs": [
+    {
+      "id": "values",
+      "type": "textarea",
+      "label": "Measurements",
+      "description": "Numbers separated by spaces, commas or newlines. Units are yours; the tool does not care.",
+      "primary": true,
+      "rows": 4,
+      "dir": "ltr",
+      "maxLength": 200000,
+      "default": "12 14 15 15 16 18 19 21 24 28 31 35 42 51 68 91 140 220 480 1200"
+    },
+    {
+      "id": "method",
+      "type": "select",
+      "label": "Definition",
+      "description": "Nearest-rank picks a measurement you actually observed. Linear interpolates between two.",
+      "default": "nearest",
+      "options": [
+        { "value": "nearest", "label": "Nearest rank" },
+        { "value": "linear", "label": "Linear interpolation" }
+      ]
+    }
+  ],
+  "links": [
+    { "label": "Why you cannot average percentiles", "href": "https://www.circonus.com/2018/11/the-problem-with-percentiles-aggregation-does-not-work/" }
+  ]
+}

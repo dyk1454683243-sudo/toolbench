@@ -1,0 +1,65 @@
+{
+  "sdk": 1,
+  "id": "queue-explorer",
+  "name": "Queue explorer",
+  "blurb": "Move the arrival rate and watch latency go vertical before capacity runs out — with a simulation checking the formula.",
+  "version": "1.0.0",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "worker" },
+  "timeoutMs": 8000,
+  "card": "live",
+  "cardFields": 3,
+  "kinds": ["group", "series", "fields", "error"],
+  "help": "README.md",
+  "tags": ["queueing", "capacity", "simulation"],
+  "inputs": [
+    {
+      "id": "arrivals",
+      "type": "number",
+      "label": "Arrival rate",
+      "unit": "req/s",
+      "description": "How much work shows up per second.",
+      "primary": true,
+      "default": 800,
+      "min": 1,
+      "max": 5000,
+      "step": 10
+    },
+    {
+      "id": "service",
+      "type": "number",
+      "label": "Service time",
+      "unit": "ms",
+      "description": "How long one request takes when nothing is queued. Capacity is 1000 ÷ this.",
+      "default": 1,
+      "min": 0.1,
+      "max": 100,
+      "step": 0.1
+    },
+    {
+      "id": "samples",
+      "type": "number",
+      "label": "Simulation samples",
+      "unit": "arrivals",
+      "description": "More samples narrow the gap between the simulation and the formula. This is the input that makes the tool slow, which is why it runs in a worker.",
+      "default": 200000,
+      "min": 1000,
+      "max": 5000000,
+      "step": 1000
+    },
+    {
+      "id": "seed",
+      "type": "number",
+      "label": "Random seed",
+      "description": "Fixed, so the same inputs always give the same simulation. A tool nobody can reproduce is a tool nobody can test.",
+      "default": 42,
+      "min": 1,
+      "max": 999999,
+      "step": 1
+    }
+  ],
+  "links": [
+    { "label": "Little's law", "href": "https://en.wikipedia.org/wiki/Little%27s_law" },
+    { "label": "M/M/1 queue", "href": "https://en.wikipedia.org/wiki/M/M/1_queue" }
+  ]
+}

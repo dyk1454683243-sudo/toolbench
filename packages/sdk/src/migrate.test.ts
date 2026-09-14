@@ -1,0 +1,125 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { type Migration, upgradeManifest, upgradeOutput, VersionError } from "./migrate.ts";
+import type { Output } from "./types.ts";
+import { SDK_VERSION } from "./version.ts";
+
+/**
+ * These tests use SYNTHETIC versions rather than real ones.
+ *
+ * The point is to prove the mechanism carries an old tool forward, and to prove it while contract
+ * version 1 is the only real version — otherwise the compatibility machinery would first be
+ * exercised on the day it is needed, which is the day you least want to be debugging it.
+ *
+ * The synthetic chain models exactly what a real additive change looks like: version 2 renames
+ * nothing and removes nothing, it only adds. So the migration's job is to fill in what an old tool
+ * could not have known about.
+ */
+
+/** 1 → 2: version 2 (imagined) adds a `tags` array and a `tone` on fields. */
+const one_to_two: Migration = {
+	from: 1,
+	manifest: (m) => ({ ...m, tags: m.tags ?? [] }),
+	output: (o) => (o.kind === "fields" ? { ...o, fields: o.fields.map((f) => ({ tone: "normal" as const, ...f })) } : o),
+};
+
+/** 2 → 3: version 3 (imagined) wraps a bare output in a group, so every tool is uniform. */
+const two_to_three: Migration = {
+	from: 2,
+	manifest: (m) => ({ ...m, grouped: true }),
+	output: (o) => (o.kind === "group" ? o : { kind: "group", parts: [o] }),
+};
+
+const CHAIN = [one_to_two, two_to_three];
+
+const v1manifest = {
+	sdk: 1,
+	id: "old-tool",
+	name: "A tool written a long time ago",
+	blurb: "Still works.",
+	version: "1.0.0",
+	capabilities: ["pure"],
+	runtime: { entry: "index.ts" },
+	inputs: [{ id: "n", type: "number", label: "N", default: 1, min: 0, max: 9 }],
+	kinds: ["fields", "error"],
+};
+
+describe("upgradeManifest", () => {
+	it("passes a current manifest through untouched", () => {
+		const out = upgradeManifest({ ...v1manifest, sdk: SDK_VERSION });
+		assert.equal(out.sdk, SDK_VERSION);
+		assert.equal(out.id, "old-tool");
+	});
+
+	it("carries a version-1 manifest up a two-step chain", () => {
+		const out = upgradeManifest(v1manifest, CHAIN, 3);
+		assert.equal(out.sdk, 3, "ends at the current version");
+		assert.deepEqual(out.tags, [], "the 1→2 step filled in what a v1 tool could not declare");
+		assert.equal(out.grouped, true, "the 2→3 step also ran");
+		assert.equal(out.id, "old-tool", "and nothing the old tool did say was lost");
+	});
+
+	it("runs the steps in order, not in the order they were listed", () => {
+		const seen: number[] = [];
+		const spy = (from: number): Migration => ({
+			from,
+			manifest: (m) => { seen.push(from); return m; },
+			output: (o) => o,
+		});
+		upgradeManifest(v1manifest, [spy(2), spy(1)], 3);
+		assert.deepEqual(seen, [1, 2]);
+	});
+
+	it("refuses a tool from the future, and says what to do about it", () => {
+		assert.throws(
+			() => upgradeManifest({ ...v1manifest, sdk: 9 }, CHAIN, 3),
+			(e: unknown) => {
+				assert.ok(e instanceof VersionError);
+				assert.match(e.message, /needs contract version 9/);
+				assert.match(e.message, /Upgrade @toolbench\/runtime/);
+				return true;
+			},
+		);
+	});
+
+	it("treats a missing migration step as a loud SDK bug, not a silent pass", () => {
+		// Current version 3, but only the 1→2 step exists: the 2→3 gap must be reported.
+		assert.throws(
+			() => upgradeManifest(v1manifest, [one_to_two], 3),
+			(e: unknown) => {
+				assert.ok(e instanceof VersionError);
+				assert.match(e.message, /No migration from contract version 2 to 3/);
+				assert.match(e.message, /bug in @toolbench\/sdk/);
+				return true;
+			},
+		);
+	});
+
+	it("rejects a manifest with no version at all", () => {
+		assert.throws(() => upgradeManifest({ id: "x" }), VersionError);
+	});
+});
+
+describe("upgradeOutput", () => {
+	const v1out: Output = { kind: "fields", fields: [{ label: "answer", value: "42" }] };
+
+	it("leaves a current output alone", () => {
+		assert.deepEqual(upgradeOutput(v1out, SDK_VERSION), v1out);
+	});
+
+	it("adapts an old tool's output through the chain", () => {
+		const out = upgradeOutput(v1out, 1, CHAIN, 3);
+		assert.equal(out.kind, "group", "the 2→3 step wrapped it");
+		assert.ok(out.kind === "group");
+		const inner = out.parts[0];
+		assert.ok(inner?.kind === "fields");
+		assert.deepEqual(inner.fields, [{ tone: "normal", label: "answer", value: "42" }], "the 1→2 step filled the new field");
+	});
+
+	it("does not let a migration invent a value the tool did set", () => {
+		const withTone: Output = { kind: "fields", fields: [{ label: "answer", value: "42", tone: "bad" }] };
+		const out = upgradeOutput(withTone, 1, [one_to_two], 2);
+		assert.ok(out.kind === "fields");
+		assert.equal(out.fields[0]?.tone, "bad", "the tool's own value wins over the default the migration supplies");
+	});
+});

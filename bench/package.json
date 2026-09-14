@@ -1,0 +1,17 @@
+{
+  "name": "@toolbench/bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The test bench: every display mode, every output kind, and both threading modes, in one place you can look at.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@toolbench/runtime": "workspace:*",
+    "@toolbench/sdk": "workspace:*"
+  },
+  "devDependencies": { "vite": "7.3.6" }
+}

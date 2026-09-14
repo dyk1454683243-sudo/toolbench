@@ -1,0 +1,265 @@
+/**
+ * The stylesheet, inside a shadow root.
+ *
+ * Two consequences of that choice, and both are the point:
+ *
+ *  - **The host's CSS cannot reach in, and ours cannot leak out.** A tool looks the same in a
+ *    Tailwind site, a Bootstrap site and a hand-written page, and it cannot break any of them.
+ *  - **Theming is therefore explicit.** Every colour, radius and font here reads a custom property
+ *    with a sensible default. Custom properties *do* cross the shadow boundary, so a host themes the
+ *    whole thing by setting a dozen variables on `tool-host` — and needs to know nothing else.
+ *
+ * The defaults follow the page: `light-dark()` picks per the host's colour scheme, so a tool does not
+ * glow white inside a dark site before anyone has configured anything.
+ */
+export const STYLES = /* css */ `
+:host {
+  /* ── Theming surface. A host overrides any of these on tool-host, and that is the whole API. ── */
+  --tb-bg:        light-dark(#ffffff, #16171d);
+  --tb-fg:        light-dark(#1a1c22, #e7e9ee);
+  --tb-muted:     light-dark(#5c6270, #9aa1b1);
+  --tb-faint:     light-dark(#767d8c, #7c8494);
+  --tb-border:    light-dark(#e2e5ea, #2b2e38);
+  --tb-surface:   light-dark(#f7f8fa, #1c1e26);
+  --tb-accent:    light-dark(#8a5a00, #f0b040);
+  --tb-accent-bg: light-dark(#fff6e6, #2a2113);
+  --tb-bad:       light-dark(#a3242c, #f08b8b);
+  --tb-warn:      light-dark(#8a5a00, #e5b567);
+  --tb-good:      light-dark(#1c6b3c, #74c98d);
+  --tb-radius:    10px;
+  --tb-font:      system-ui, -apple-system, "Segoe UI", sans-serif;
+  --tb-mono:      ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --tb-gap:       0.75rem;
+
+  /* Series colours. Six, then they repeat — a chart needing seven is a chart needing a rethink. */
+  --tb-s1: light-dark(#8a5a00, #e0b877);
+  --tb-s2: light-dark(#5b3fa8, #c4a5f0);
+  --tb-s3: light-dark(#0f6e6e, #7fd1d1);
+  --tb-s4: light-dark(#1f5aa8, #8ec4f0);
+  --tb-s5: light-dark(#a02a5e, #f0a5c0);
+  --tb-s6: light-dark(#2d6b32, #8fd6a8);
+
+  display: block;
+  color: var(--tb-fg);
+  font-family: var(--tb-font);
+  font-size: 15px;
+  line-height: 1.5;
+  container-type: inline-size;
+}
+:host([hidden]) { display: none; }
+* { box-sizing: border-box; }
+
+.tb {
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius);
+  overflow: hidden;
+}
+/* Embedded in prose: no frame competing with the surrounding text. */
+:host([mode="embed"]) .tb { border-radius: var(--tb-radius); background: var(--tb-surface); }
+
+.tb-head { padding: 0.875rem 1rem 0; }
+.tb-name { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
+.tb-name a { color: inherit; text-decoration: none; }
+.tb-name a:hover, .tb-name a:focus-visible { color: var(--tb-accent); text-decoration: underline; }
+.tb-blurb { margin: 0.25rem 0 0; color: var(--tb-muted); font-size: 0.9rem; }
+
+.tb-body { padding: 0.875rem 1rem 1rem; display: grid; gap: var(--tb-gap); }
+
+/* ── the form ─────────────────────────────────────────────────────────────────────────────── */
+.tb-form { display: grid; gap: 0.625rem; margin: 0; border: 0; padding: 0; }
+.tb-field-row { display: grid; gap: 0.25rem; }
+.tb-label { font-size: 0.82rem; font-weight: 600; color: var(--tb-muted); }
+.tb-unit { font-weight: 400; color: var(--tb-faint); }
+.tb-desc { margin: 0; font-size: 0.78rem; color: var(--tb-faint); }
+.tb-input, .tb-textarea, .tb-select {
+  width: 100%;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--tb-fg);
+  background: var(--tb-surface);
+  border: 1px solid var(--tb-border);
+  border-radius: 8px;
+  padding: 0.4375rem 0.5625rem;
+}
+.tb-textarea { font-family: var(--tb-mono); font-size: 0.82rem; resize: vertical; min-height: 4.5rem; }
+.tb-input[type="number"] { font-family: var(--tb-mono); }
+.tb-input:focus-visible, .tb-textarea:focus-visible, .tb-select:focus-visible, .tb-run:focus-visible, .tb-facade:focus-visible {
+  outline: 2px solid var(--tb-accent);
+  outline-offset: 2px;
+}
+.tb-input[aria-invalid="true"], .tb-textarea[aria-invalid="true"] { border-color: var(--tb-bad); }
+.tb-toggle-row { display: flex; align-items: center; gap: 0.5rem; }
+.tb-actions { display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+.tb-run {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tb-bg);
+  background: var(--tb-accent);
+  border: 0;
+  border-radius: 8px;
+  padding: 0.4375rem 0.875rem;
+  cursor: pointer;
+}
+.tb-run[disabled] { opacity: 0.5; cursor: default; }
+.tb-progress {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--tb-border);
+  overflow: hidden;
+  min-width: 4rem;
+}
+.tb-progress > i { display: block; height: 100%; background: var(--tb-accent); transition: width 0.12s linear; }
+@media (prefers-reduced-motion: reduce) {
+  .tb-progress > i { transition: none; }
+}
+
+/* ── status and output ────────────────────────────────────────────────────────────────────── */
+.tb-status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--tb-faint);
+  font-family: var(--tb-mono);
+  min-height: 1.2em;
+}
+.tb-output { display: grid; gap: 0.75rem; }
+.tb-output[data-state="running"] { opacity: 0.65; }
+
+.tb-fields, .tb-field-group dl { margin: 0; display: grid; gap: 0.375rem; }
+.tb-field { display: grid; grid-template-columns: minmax(6rem, 34%) 1fr; gap: 0.75rem; align-items: baseline; }
+.tb-field dt { color: var(--tb-muted); font-size: 0.82rem; }
+.tb-field dd { margin: 0; font-family: var(--tb-mono); font-size: 0.85rem; word-break: break-word; }
+.tb-field[data-tone="bad"] dd .tb-value { color: var(--tb-bad); }
+.tb-field[data-tone="warn"] dd .tb-value { color: var(--tb-warn); }
+.tb-field[data-tone="good"] dd .tb-value { color: var(--tb-good); }
+.tb-note { color: var(--tb-faint); margin-left: 0.5ch; }
+.tb-field-group h4 { margin: 0.5rem 0 0.25rem; font-size: 0.75rem; text-transform: none; color: var(--tb-faint); font-weight: 600; }
+.tb-more { margin: 0; font-size: 0.78rem; color: var(--tb-faint); }
+
+.tb-out-text p { margin: 0; }
+.tb-mono, .tb-out-text pre, .tb-out-code pre { font-family: var(--tb-mono); font-size: 0.82rem; }
+.tb-out-text pre, .tb-out-code pre {
+  margin: 0; padding: 0.625rem 0.75rem; overflow-x: auto;
+  background: var(--tb-surface); border: 1px solid var(--tb-border); border-radius: 8px;
+}
+.tb-out-code code { font: inherit; }
+
+.tb-out-table { overflow-x: auto; }
+.tb-out-table table, .tb-chart-data table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
+.tb-out-table caption, .tb-chart-data caption { text-align: start; color: var(--tb-faint); font-size: 0.78rem; padding-bottom: 0.375rem; }
+.tb-out-table th, .tb-out-table td, .tb-chart-data th, .tb-chart-data td {
+  text-align: start; padding: 0.3125rem 0.5rem; border-bottom: 1px solid var(--tb-border);
+}
+.tb-out-table th { color: var(--tb-muted); font-size: 0.78rem; font-weight: 600; }
+.tb-out-table td[data-align="end"], .tb-out-table th[data-align="end"] { text-align: end; }
+.tb-out-table td[data-tone="bad"] { color: var(--tb-bad); }
+.tb-out-table td[data-tone="warn"] { color: var(--tb-warn); }
+
+.tb-out-error {
+  display: flex; gap: 0.5rem; align-items: baseline;
+  padding: 0.5rem 0.6875rem;
+  background: light-dark(#fdf2f2, #2a1a1c);
+  border: 1px solid var(--tb-bad);
+  border-radius: 8px;
+  font-size: 0.86rem;
+}
+.tb-error-icon {
+  flex: 0 0 auto; width: 1.05rem; height: 1.05rem; border-radius: 50%;
+  background: var(--tb-bad); color: var(--tb-bg);
+  font-size: 0.72rem; font-weight: 700; line-height: 1.05rem; text-align: center;
+}
+.tb-at { color: var(--tb-faint); font-family: var(--tb-mono); font-size: 0.78rem; }
+
+.tb-unknown {
+  padding: 0.75rem; border: 1px dashed var(--tb-border); border-radius: 8px;
+  background: var(--tb-surface); font-size: 0.86rem;
+}
+.tb-unknown p { margin: 0.25rem 0 0; color: var(--tb-muted); }
+
+/* ── chart ────────────────────────────────────────────────────────────────────────────────── */
+.tb-out-chart { margin: 0; }
+.tb-out-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.tb-grid { stroke: var(--tb-border); stroke-width: 1; }
+.tb-axis { stroke: var(--tb-faint); stroke-width: 1; }
+.tb-tick, .tb-axis-label { fill: var(--tb-faint); font-family: var(--tb-mono); font-size: 10px; }
+.tb-axis-label { font-family: var(--tb-font); font-size: 11px; }
+.tb-annotation { stroke: var(--tb-accent); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.8; }
+.tb-annotation-label { fill: var(--tb-accent); font-family: var(--tb-mono); font-size: 10px; }
+/* Each series class sets ONE custom property; the shape decides whether that is a stroke or a fill.
+   The first version set stroke and fill together, which beat the line rule's "fill: none" on source
+   order and drew every line as a filled blob. (No backticks in here: this is a template literal.) */
+.tb-s1 { --c: var(--tb-s1); }
+.tb-s2 { --c: var(--tb-s2); }
+.tb-s3 { --c: var(--tb-s3); }
+.tb-s4 { --c: var(--tb-s4); }
+.tb-s5 { --c: var(--tb-s5); }
+.tb-s6 { --c: var(--tb-s6); }
+.tb-line { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tb-area { stroke: none; fill: var(--c); opacity: 0.14; }
+.tb-bar  { stroke: none; fill: var(--c); opacity: 0.85; }
+.tb-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.5rem 0 0; padding: 0; list-style: none; font-size: 0.78rem; color: var(--tb-muted); }
+.tb-legend li { display: flex; align-items: center; gap: 0.375rem; }
+.tb-swatch { width: 0.75rem; height: 0.1875rem; border-radius: 2px; background: var(--c, currentColor); }
+.tb-chart-data { margin-top: 0.5rem; font-size: 0.8rem; }
+.tb-chart-data summary { color: var(--tb-faint); cursor: pointer; }
+.tb-chart-data table { margin-top: 0.5rem; }
+
+/* ── the facade: a card before it is activated ────────────────────────────────────────────── */
+.tb-facade {
+  display: block; width: 100%; text-align: start;
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  cursor: pointer;
+}
+.tb-facade-hint {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  font-size: 0.8rem; font-weight: 600; color: var(--tb-accent);
+}
+.tb-facade-hint::before {
+  content: ""; width: 0; height: 0;
+  border-left: 6px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+.tb-facade:hover .tb-facade-hint { text-decoration: underline; }
+
+.tb-foot { display: flex; gap: 0.875rem; flex-wrap: wrap; padding: 0 1rem 0.875rem; font-size: 0.8rem; }
+.tb-foot a { color: var(--tb-accent); text-decoration: none; }
+.tb-foot a:hover { text-decoration: underline; }
+
+/* Screen-reader-only, for the announcements that should not take space. */
+.tb-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+@container (max-width: 30rem) {
+  .tb-field { grid-template-columns: 1fr; gap: 0; }
+}
+`;
+
+/**
+ * Adopt the stylesheet into a shadow root.
+ *
+ * `adoptedStyleSheets` shares one parsed sheet across every instance on the page, which matters when
+ * a page holds a dozen cards. The `<style>` fallback is for anything that lacks it.
+ */
+export function applyStyles(root: ShadowRoot): void {
+	if ("adoptedStyleSheets" in root && typeof CSSStyleSheet === "function") {
+		try {
+			sheet ??= (() => {
+				const s = new CSSStyleSheet();
+				s.replaceSync(STYLES);
+				return s;
+			})();
+			root.adoptedStyleSheets = [sheet];
+			return;
+		} catch {
+			// Fall through: some environments expose the API and refuse construction.
+		}
+	}
+	const style = document.createElement("style");
+	style.textContent = STYLES;
+	root.append(style);
+}
+
+let sheet: CSSStyleSheet | undefined;

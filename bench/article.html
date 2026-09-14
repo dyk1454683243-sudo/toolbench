@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Toolbench — inside an article</title>
+	<link rel="stylesheet" href="/src/bench.css" />
+</head>
+<body>
+	<div class="wrap prose">
+		<header class="top">
+			<h1>Your p99 is not what you think</h1>
+			<nav class="modes">
+				<a href="/index.html">card</a>
+				<a href="/tool.html?id=percentiles">page</a>
+				<a href="/article.html" aria-current="page">in an article</a>
+			</nav>
+		</header>
+		<p class="lead">A stand-in for a blog post, to check that a tool can sit in the middle of prose.</p>
+
+		<p>
+			Suppose five hosts each report a p99 latency, and a dashboard shows you the average of those
+			five numbers. That average is not the p99 of anything. It is not the p99 of the fleet, it is not
+			the p99 of any host, and it does not correspond to a request that any user made.
+		</p>
+		<p>
+			The reason is that a percentile is a position in a sorted list, and positions do not add. Paste
+			your own measurements below and compare the two rows: the true p99 of everything pooled, and the
+			average of the chunks' p99s that a dashboard would have shown you.
+		</p>
+
+		<tool-host tool="percentiles" mode="embed"></tool-host>
+
+		<p>
+			The gap widens as the distribution skews, which is precisely when you are looking at the number.
+			A long tail on one host is diluted by four quiet ones.
+		</p>
+		<p>
+			The same thing happens across time as well as across hosts. A p99 per minute, averaged over an
+			hour, is the same error with a different axis — and it hides exactly the minute you were paged
+			for.
+		</p>
+
+		<h2>An interactive figure, one line of markup</h2>
+		<p>
+			The tool above is <code>&lt;tool-host tool="percentiles" mode="embed"&gt;</code>. The one below is
+			a different tool in the same page, to check that two of them coexist — one runs on the main
+			thread, the other in a worker.
+		</p>
+
+		<tool-host tool="queue-explorer" mode="embed"></tool-host>
+
+		<p class="footnote">
+			In a real site this would be a directive in markdown that expands to the same element. Nothing
+			about the runtime cares which.
+		</p>
+	</div>
+	<script type="module" src="/src/boot.ts"></script>
+</body>
+</html>

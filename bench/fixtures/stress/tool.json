@@ -1,0 +1,32 @@
+{
+  "sdk": 1,
+  "id": "stress",
+  "name": "Failure modes",
+  "blurb": "A deliberately badly behaved tool: it can spin forever, throw, or ignore the abort signal.",
+  "version": "1.0.0",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "worker" },
+  "timeoutMs": 1500,
+  "card": "live",
+  "cardFields": 3,
+  "kinds": ["fields", "error"],
+  "tags": ["bench"],
+  "inputs": [
+    {
+      "id": "mode",
+      "type": "select",
+      "label": "What should it do",
+      "description": "Each option exercises a different failure path in the runtime.",
+      "primary": true,
+      "default": "fine",
+      "options": [
+        { "value": "fine", "label": "Work normally" },
+        { "value": "spin", "label": "Spin forever (should be killed by the timeout)" },
+        { "value": "throw", "label": "Throw (a bug in the tool)" },
+        { "value": "bad-input", "label": "Reject the input (the tool working correctly)" },
+        { "value": "slow", "label": "Take a while, reporting progress" }
+      ]
+    },
+    { "id": "ms", "type": "number", "label": "How long, for the slow option", "unit": "ms", "default": 600, "min": 0, "max": 5000, "step": 100 }
+  ]
+}

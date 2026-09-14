@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Toolbench — page mode</title>
+	<link rel="stylesheet" href="/src/bench.css" />
+</head>
+<body>
+	<div class="wrap">
+		<header class="top">
+			<h1 id="title">Tool</h1>
+			<nav class="modes">
+				<a href="/index.html">card</a>
+				<a href="/tool.html?id=percentiles" aria-current="page">page</a>
+				<a href="/article.html">in an article</a>
+			</nav>
+		</header>
+		<p class="lead" id="blurb"></p>
+		<nav class="modes" id="switcher" aria-label="Choose a tool"></nav>
+
+		<h2>Page mode</h2>
+		<p class="note">
+			Every input, the full result, and the tool's own links. It loads when it comes near the
+			viewport rather than on page load.
+		</p>
+		<tool-host id="host" mode="page"></tool-host>
+
+		<h2>Help</h2>
+		<div id="help" class="note">This tool ships no README.</div>
+
+		<p class="footnote">
+			A host site would render the help from the tool's markdown and put its own chrome around this.
+			The bench keeps it plain so the runtime's output is what you are looking at.
+		</p>
+	</div>
+	<script type="module" src="/src/page.ts"></script>
+</body>
+</html>

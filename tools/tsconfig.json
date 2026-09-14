@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    /* A tool is plain computation: no DOM, so a tool cannot accidentally depend on a browser. */
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "paths": { "@toolbench/sdk": ["../packages/sdk/src/index.ts"] }
+  },
+  "include": ["*/index.ts"]
+}

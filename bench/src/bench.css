@@ -1,0 +1,47 @@
+/*
+ * The bench's own styling. Deliberately plain and deliberately NOT sharing anything with the runtime:
+ * if a tool only looks right inside this page's CSS, it will not look right in anyone else's.
+ */
+:root {
+  --page: light-dark(#fbfbfc, #101116);
+  --ink: light-dark(#1a1c22, #e7e9ee);
+  --muted: light-dark(#5c6270, #9aa1b1);
+  --line: light-dark(#e2e5ea, #2b2e38);
+  --accent: light-dark(#8a5a00, #f0b040);
+  color-scheme: light dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 2rem 1.25rem 5rem;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 60rem; margin: 0 auto; }
+.wrap.prose { max-width: 40rem; }
+header.top { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+h1 { font-size: 1.6rem; margin: 0; letter-spacing: -0.02em; }
+h2 { font-size: 1.05rem; margin: 2.5rem 0 0.25rem; letter-spacing: -0.01em; }
+h2:first-of-type { margin-top: 1.5rem; }
+p.lead { color: var(--muted); margin: 0.25rem 0 0; }
+p.note { color: var(--muted); font-size: 0.88rem; margin: 0.25rem 0 1rem; }
+nav.modes { display: flex; gap: 1rem; font-size: 0.9rem; }
+nav.modes a { color: var(--accent); }
+a { color: var(--accent); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.25rem; }
+.footnote { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+
+/*
+ * The theming proof: one section overrides the runtime's custom properties and nothing else. If this
+ * works, a host can match its own design system without touching the package.
+ */
+.themed tool-host {
+  --tb-accent: #0b6b5f;
+  --tb-radius: 2px;
+  --tb-bg: light-dark(#f4fbf9, #0d1a18);
+  --tb-surface: light-dark(#e7f4f1, #11221f);
+  --tb-border: light-dark(#b9dbd4, #1d3a35);
+  --tb-font: Georgia, "Times New Roman", serif;
+}
