@@ -196,6 +196,7 @@ export function validateManifest(raw: unknown): Manifest {
 	if (o.cardFields !== undefined && (typeof o.cardFields !== "number" || o.cardFields < 1)) {
 		fail("cardFields", "must be a positive number of fields");
 	}
+	if (o.autoRun !== undefined && typeof o.autoRun !== "boolean") fail("autoRun", "must be a boolean");
 
 	// --- timeout ----------------------------------------------------------------------------------
 	if (o.timeoutMs !== undefined) {
@@ -212,6 +213,13 @@ export function validateManifest(raw: unknown): Manifest {
 	 */
 	if (card === "live" && !(capabilities.length === 1 && capabilities[0] === "pure")) {
 		fail("card", 'only a "pure" tool may be a live card — a compact slot must not read files or call networks');
+	}
+	if (o.autoRun === true && thread === "worker") {
+		fail(
+			"autoRun",
+			'is for tools that are instant, and a worker-mode tool is by definition not — it declared thread: "worker" ' +
+				"because its running time depends on its input. Leave autoRun off and let the reader press Run.",
+		);
 	}
 	if (thread === "main" && o.timeoutMs !== undefined) {
 		fail(

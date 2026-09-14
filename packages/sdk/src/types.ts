@@ -178,6 +178,15 @@ export interface Manifest {
 	card?: "live" | "info" | "none";
 	/** How many fields a card shows before it stops. Errors are never truncated. */
 	cardFields?: number;
+	/**
+	 * Re-run as the reader types, instead of waiting for the Run button.
+	 *
+	 * Off by default, and that default is deliberate. A tool that runs on every keystroke does work
+	 * nobody asked for, makes the Run button look broken (the answer is already there), and takes the
+	 * decision away from the reader. Opt in only for a tool that is genuinely instant and reads better
+	 * live — a unit converter, say. Anything with a worker or a heavy loop should leave it alone.
+	 */
+	autoRun?: boolean;
 	/** Worker mode only. A tool that declares this on the main thread is rejected: nothing there can be stopped. */
 	timeoutMs?: number;
 	/** Markdown file, relative to the tool's directory, rendered as the tool's help. */

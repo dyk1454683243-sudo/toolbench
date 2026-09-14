@@ -103,6 +103,10 @@ export const STYLES = /* css */ `
   cursor: pointer;
 }
 .tb-run[disabled] { opacity: 0.5; cursor: default; }
+/* Set while a result is stale, so the button that resolves it is the thing that draws the eye. */
+.tb-run[data-attention] { box-shadow: 0 0 0 3px color-mix(in oklab, var(--tb-accent) 28%, transparent); }
+@media (prefers-reduced-motion: reduce) { .tb-run[data-attention] { box-shadow: none; text-decoration: underline; } }
+.tb-progress[hidden] { display: none; }
 .tb-progress {
   flex: 1;
   height: 4px;
@@ -126,6 +130,9 @@ export const STYLES = /* css */ `
 }
 .tb-output { display: grid; gap: 0.75rem; }
 .tb-output[data-state="running"] { opacity: 0.65; }
+/* The form no longer matches what is on screen. Dimmed rather than cleared: the previous answer is
+   still the last true one, and throwing it away loses the comparison the reader was making. */
+.tb-output[data-stale] { opacity: 0.45; }
 
 .tb-fields, .tb-field-group dl { margin: 0; display: grid; gap: 0.375rem; }
 .tb-field { display: grid; grid-template-columns: minmax(6rem, 34%) 1fr; gap: 0.75rem; align-items: baseline; }

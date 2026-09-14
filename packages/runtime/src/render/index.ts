@@ -114,7 +114,9 @@ function renderFields(fields: Field[], options: RenderOptions): HTMLElement {
 	}
 
 	if (hidden > 0) {
-		sections.push(el("p", { class: "tb-more" }, `+${hidden} more`));
+		// "fields" rather than a bare count: a group can also be truncated in a card, and two
+		// unlabelled "+2 more" lines next to each other are a puzzle rather than information.
+		sections.push(el("p", { class: "tb-more" }, `+${hidden} more field${hidden === 1 ? "" : "s"}`));
 	}
 	return el("div", { class: "tb-out-fields" }, ...sections);
 }

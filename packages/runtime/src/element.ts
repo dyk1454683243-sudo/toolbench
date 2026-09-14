@@ -42,6 +42,9 @@ import { applyStyles } from "./styles.ts";
 
 export type Mode = "card" | "page" | "embed";
 
+/** How long a run must last before its progress bar is worth showing. */
+const SLOW_MS = 400;
+
 export interface ToolHostConfig {
 	/** Where tools come from. */
 	source: ToolSource;
@@ -74,7 +77,10 @@ export class ToolHost extends HTMLElement {
 	#values: InputValues = {};
 	#observer: IntersectionObserver | undefined;
 	#debounce: ReturnType<typeof setTimeout> | undefined;
+	#slowTimer: ReturnType<typeof setTimeout> | undefined;
 	#activated = false;
+	/** True between "the reader asked for this" and "the tool's code is here". */
+	#loading = false;
 	#seed: Output | undefined;
 	#controls = new Map<string, HTMLElement>();
 	#els: {
@@ -130,6 +136,7 @@ export class ToolHost extends HTMLElement {
 		this.#observer?.disconnect();
 		this.#observer = undefined;
 		if (this.#debounce) clearTimeout(this.#debounce);
+		if (this.#slowTimer) clearTimeout(this.#slowTimer);
 	}
 
 	attributeChangedCallback(name: string, before: string | null, after: string | null): void {
@@ -192,25 +199,64 @@ export class ToolHost extends HTMLElement {
 	async #activate(): Promise<void> {
 		if (this.#activated || !this.#manifest || !config) return;
 		this.#activated = true;
+		/*
+		 * ⚠️ The form is not painted until the module is here.
+		 *
+		 * Painting it first gave a Run button that existed and did nothing, because `#run` has no tool to
+		 * call yet — invisible on a fast local load and a real dead control on a slow connection. The
+		 * facade stays up, with a loading hint, until there is something behind it.
+		 */
+		this.#loading = true;
 		this.#paint();
-		this.#say("loading…");
 		try {
 			this.#loaded = await config.source.load(this.#manifest.id);
 			this.#runner = new Runner(config.workerFactory ? { workerFactory: config.workerFactory } : {});
+			this.#loading = false;
 			this.#paint();
-			await this.#run({ focusResult: false });
+			/*
+			 * ⚠️ Activation does NOT run the tool.
+			 *
+			 * The first version ran on activation and on every keystroke, and the result was a Run button
+			 * that appeared broken: by the time you looked at it, the answer was already there, and
+			 * pressing it changed nothing visible. Work nobody asked for, and a control that lies about
+			 * being the trigger.
+			 *
+			 * So the reader decides. A seeded result stays on screen as the starting point, and the tool
+			 * runs when Run is pressed — or as the reader types, but only for a tool that opted into
+			 * `autoRun` because it is genuinely instant.
+			 */
+			this.#say(this.#seed ? "showing the default result — press Run to try your own" : "press Run");
 		} catch (error) {
 			this.#activated = false;
+			this.#loading = false;
 			this.#showError(error);
 		}
 	}
 
 	// --- running ----------------------------------------------------------------------------------
 
-	#schedule(): void {
-		if (this.#debounce) clearTimeout(this.#debounce);
-		const wait = config?.debounceMs ?? 150;
-		this.#debounce = setTimeout(() => void this.#run({ focusResult: false }), wait);
+	/**
+	 * An input changed. Either run (only if the tool asked for that) or mark what is on screen as no
+	 * longer matching the form — which is the honest thing, and it makes Run mean something.
+	 */
+	#inputChanged(): void {
+		if (this.#manifest?.autoRun === true) {
+			if (this.#debounce) clearTimeout(this.#debounce);
+			const wait = config?.debounceMs ?? 150;
+			this.#debounce = setTimeout(() => void this.#run({ focusResult: false }), wait);
+			return;
+		}
+		this.#markStale();
+	}
+
+	#markStale(): void {
+		const output = this.#els.output;
+		if (!output) return;
+		// Nothing to go stale before the first run.
+		const hasResult = output.children.length > 0;
+		output.toggleAttribute("data-stale", hasResult);
+		this.#els.run?.toggleAttribute("data-attention", true);
+		this.#say(hasResult ? "inputs changed — press Run" : "press Run");
 	}
 
 	async #run(options: { focusResult: boolean }): Promise<void> {
@@ -218,6 +264,8 @@ export class ToolHost extends HTMLElement {
 		const runner = this.#runner;
 		if (!loaded || !runner) return;
 
+		this.#els.output?.removeAttribute("data-stale");
+		this.#els.run?.removeAttribute("data-attention");
 		this.#setBusy(true);
 		this.#say("running…");
 		try {
@@ -240,6 +288,13 @@ export class ToolHost extends HTMLElement {
 	}
 
 	#showError(error: unknown): void {
+		if (!this.#els.output) {
+			// Activation itself failed, so there is no result area yet: the whole element becomes the
+			// message. Better than a facade that silently never opens.
+			const message = error instanceof Error ? error.message : String(error);
+			this.#fatal(message);
+			return;
+		}
 		/*
 		 * A tool crashing, a worker failing to start and a timeout are three different problems, and a
 		 * reader who cannot tell them apart cannot do anything useful about any of them.
@@ -282,18 +337,18 @@ export class ToolHost extends HTMLElement {
 			);
 		}
 
-		if (!this.#activated) {
+		if (!this.#activated || this.#loading) {
 			// The facade: static, and clickable only in card mode.
 			const preview = el(
 				"div",
 				{ class: "tb-body" },
 				mode === "page" ? null : el("p", { class: "tb-blurb" }, manifest.blurb),
 				this.#seed ? render(this.#seed, { compact, ...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}) }) : null,
-				el("span", { class: "tb-facade-hint" }, this.#seed ? "Try it" : "Run this tool"),
+				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : this.#seed ? "Try it" : "Open this tool"),
 			);
-			if (compact) {
+			if (compact && !this.#loading) {
 				const button = el("button", { class: "tb-facade", type: "button" });
-				button.setAttribute("aria-label", `Run ${manifest.name}`);
+				button.setAttribute("aria-label", `Open ${manifest.name}`);
 				button.append(preview);
 				button.addEventListener("click", () => void this.#activate());
 				frame.append(button);
@@ -313,7 +368,8 @@ export class ToolHost extends HTMLElement {
 
 		const run = el("button", { class: "tb-run", type: "button" }, "Run");
 		run.addEventListener("click", () => void this.#run({ focusResult: true }));
-		const progress = el("div", { class: "tb-progress", "aria-hidden": "true" }, el("i", { style: "width:0%" }));
+		// Hidden until a run outlasts SLOW_MS. A bar that flashes for 20 ms is noise.
+		const progress = el("div", { class: "tb-progress", "aria-hidden": "true", hidden: true }, el("i", { style: "width:0%" }));
 		const status = el("p", { class: "tb-status", role: "status", "aria-live": "polite" });
 		const output = el("div", { class: "tb-output", tabindex: "-1" });
 
@@ -369,7 +425,7 @@ export class ToolHost extends HTMLElement {
 				area.value = String(this.#values[spec.id] ?? spec.default);
 				area.addEventListener("input", () => {
 					this.#values[spec.id] = area.value;
-					this.#schedule();
+					this.#inputChanged();
 				});
 				control = area;
 				break;
@@ -383,7 +439,7 @@ export class ToolHost extends HTMLElement {
 				}
 				select.addEventListener("change", () => {
 					this.#values[spec.id] = select.value;
-					void this.#run({ focusResult: false });
+					this.#inputChanged();
 				});
 				control = select;
 				break;
@@ -393,7 +449,7 @@ export class ToolHost extends HTMLElement {
 				box.checked = Boolean(this.#values[spec.id] ?? spec.default);
 				box.addEventListener("change", () => {
 					this.#values[spec.id] = box.checked;
-					void this.#run({ focusResult: false });
+					this.#inputChanged();
 				});
 				control = box;
 				break;
@@ -415,7 +471,7 @@ export class ToolHost extends HTMLElement {
 					// Clamped here, not in the tool: min and max are the only guard against an input
 					// that turns a bounded computation into an unbounded one.
 					this.#values[spec.id] = Number.isFinite(value) ? Math.min(spec.max, Math.max(spec.min, value)) : spec.default;
-					this.#schedule();
+					this.#inputChanged();
 				});
 				control = input;
 				break;
@@ -434,12 +490,25 @@ export class ToolHost extends HTMLElement {
 				input.value = String(this.#values[spec.id] ?? spec.default);
 				input.addEventListener("input", () => {
 					this.#values[spec.id] = input.value;
-					this.#schedule();
+					this.#inputChanged();
 				});
 				control = input;
 				break;
 			}
 		}
+
+		/*
+		 * Enter runs from a single-line control; a textarea needs a modifier, because Enter there is a
+		 * newline. Without this, a keyboard user has to tab past every remaining input to reach Run.
+		 */
+		control.addEventListener("keydown", (event) => {
+			const key = event as KeyboardEvent;
+			if (key.key !== "Enter") return;
+			const needsModifier = spec.type === "textarea";
+			if (needsModifier && !(key.metaKey || key.ctrlKey)) return;
+			key.preventDefault();
+			void this.#run({ focusResult: true });
+		});
 
 		control.setAttribute("aria-describedby", [...describedBy, errorId].join(" "));
 		this.#controls.set(spec.id, control);
@@ -491,7 +560,20 @@ export class ToolHost extends HTMLElement {
 		this.#els.output?.setAttribute("data-state", busy ? "running" : "idle");
 		this.#els.output?.setAttribute("aria-busy", String(busy));
 		if (this.#els.run) this.#els.run.disabled = busy;
-		if (!busy) this.#setProgress(0);
+
+		if (this.#slowTimer) clearTimeout(this.#slowTimer);
+		this.#slowTimer = undefined;
+		if (busy) {
+			/*
+			 * Reveal the bar only if the run is still going after SLOW_MS. Most runs finish in single-digit
+			 * milliseconds, and a progress bar that appears and vanishes in that time is worse than none:
+			 * it draws the eye to report that nothing happened.
+			 */
+			this.#slowTimer = setTimeout(() => this.#els.progress?.removeAttribute("hidden"), SLOW_MS);
+		} else {
+			this.#els.progress?.setAttribute("hidden", "");
+			this.#setProgress(0);
+		}
 	}
 
 	#setProgress(fraction: number): void {

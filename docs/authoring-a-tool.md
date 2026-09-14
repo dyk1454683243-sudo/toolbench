@@ -58,6 +58,7 @@ Rules, all of them:
   "kinds": ["fields", "error"],      // every kind `run` can return
   "card": "live",                    // live | info | none
   "cardFields": 4,
+  "autoRun": false,                  // default. true = update as the reader types
   "inputs": [
     {
       "id": "text",
@@ -82,7 +83,14 @@ knowing about before you hit them:
 - `kinds` must include `"error"`, because every tool can be given bad input;
 - `timeoutMs` is rejected unless `thread` is `"worker"`. On the main thread there is nothing to
   terminate, so the field would be a lie;
-- only a `pure` tool may be `card: "live"` — a compact slot must not read files or call networks.
+- only a `pure` tool may be `card: "live"` — a compact slot must not read files or call networks;
+- `autoRun` is rejected on a worker-mode tool. A tool declared `thread: "worker"` did so because its
+  running time depends on its input, which is the definition of a tool that should not run on every
+  keystroke.
+
+**Nothing runs by itself.** The reader presses Run (or Enter). Changing an input marks the previous
+result stale rather than recomputing it. `autoRun: true` opts a genuinely instant tool into updating as
+you type — reach for it rarely.
 
 ## 3. The fixtures
 

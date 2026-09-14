@@ -82,6 +82,22 @@ shows a real answer before any JavaScript arrives:
 </tool-host>
 ```
 
+## How a tool runs
+
+**The reader decides.** Nothing runs on its own:
+
+- Opening a card, or scrolling a tool into view, loads its code and shows the form. It does **not**
+  run the tool.
+- **Run** runs it. So does <kbd>Enter</kbd> in a single-line input, or <kbd>⌘/Ctrl</kbd> +
+  <kbd>Enter</kbd> in a textarea.
+- Changing an input **marks the result stale** — the previous answer dims and the status says so —
+  rather than recomputing. The old answer is still the last true one, and keeping it lets you compare.
+- A tool that is genuinely instant can opt into `"autoRun": true` and update as you type. It is off by
+  default, and worker-mode tools may not use it.
+
+The progress bar appears only if a run is still going after 400 ms. A bar that flashes for 20 ms draws
+the eye to report that nothing happened.
+
 ## Adding it to a website
 
 Three things, once:

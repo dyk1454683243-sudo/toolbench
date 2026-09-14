@@ -108,6 +108,8 @@ Each of these was added after a failure, and each is guarded by a test:
 | Terminate **and discard** the worker on timeout | A terminated worker's state is undefined; reusing it means reasoning about what survived. Respawning costs 2 ms. |
 | `runner.dispose()` on element removal | On a site with client-side navigation the element is removed rather than the page reloaded, and a worker with no owner survives at a few megabytes each. |
 | Fields identified by *group + label* in fixtures | A tool reporting the same quantity two ways ("time in system" under Formula and under Simulation) tripped a duplicate-label check that was not a duplicate. |
+| Run is the only trigger; the form is not painted until the module arrives | The first version ran on activation and on every keystroke, so the Run button looked broken — the answer was already there before you looked at it. And painting the form during loading gave a Run button that existed and did nothing. |
+| The progress bar waits 400 ms | It was always visible, and flashed for 20 ms on every fast run: motion reporting that nothing happened. |
 | The stress fixture's loop does real work | An empty timing loop was **deleted by the minifier** as dead code, so the tool returned instantly and the timeout test passed for the wrong reason. Only visible because the tests run against the built bundle. |
 
 ## Testing layers

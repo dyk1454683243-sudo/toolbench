@@ -76,10 +76,7 @@ describe("card mode — the facade", () => {
 		);
 
 		await page.locator("tool-host[tool=percentiles]").first().locator(".tb-facade").click();
-		await page.waitForFunction(() => {
-			const root = document.querySelector("tool-host[tool=percentiles]")?.shadowRoot;
-			return root?.querySelector(".tb-out-fields") !== null;
-		});
+		await page.locator("tool-host[tool=percentiles]").first().locator(".tb-form").waitFor();
 		assert.equal(scripts.filter(isToolChunk).length, 1, "exactly one tool chunk should arrive on the click");
 		await page.close();
 	});
@@ -100,20 +97,67 @@ describe("card mode — the facade", () => {
 		await page.close();
 	});
 
+	it("does not run on activation — Run is the trigger, and it does something", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		// The unseeded card, so there is nothing on screen to confuse a result with.
+		const host = page.locator("tool-host[tool=queue-explorer]").first();
+		await host.locator(".tb-facade").click();
+		await host.locator(".tb-form").waitFor();
+
+		assert.equal(await host.locator(".tb-output > *").count(), 0, "activation must not run the tool");
+		assert.match(String(await host.locator(".tb-status").textContent()), /press Run/);
+
+		await host.locator(".tb-run").click();
+		/*
+		 * Any result will do — a card renders only the FIRST part of a group, and this tool's first part
+		 * is its chart, not its fields. Asserting on a specific renderer here was the test being
+		 * specific about the wrong thing.
+		 */
+		await host.locator(".tb-output > *").first().waitFor({ timeout: 15_000 });
+		assert.ok((await host.locator(".tb-output > *").count()) > 0, "Run produces a result");
+		await page.close();
+	});
+
+	it("marks a result stale when an input changes, and does not re-run by itself", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator("tool-host[tool=percentiles]").first();
+		await host.locator(".tb-facade").click();
+		await host.locator(".tb-form").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-fields").first().waitFor();
+		const first = await host.locator(".tb-output").textContent();
+
+		await host.locator("textarea").fill("1 2 nope");
+		await page.waitForTimeout(600); // longer than any debounce would have been
+		assert.equal(
+			await host.locator(".tb-output").textContent(),
+			first,
+			"typing must not re-run the tool — the previous result stays until Run is pressed",
+		);
+		assert.equal(await host.locator(".tb-output[data-stale]").count(), 1, "but it is marked stale");
+		assert.match(String(await host.locator(".tb-status").textContent()), /inputs changed/);
+
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-error").waitFor();
+		const errorText = await host.locator(".tb-error-message").textContent();
+		assert.match(String(errorText), /"nope" is not a number/);
+		assert.ok(!String(errorText).endsWith("…"), "an error must never be abbreviated");
+		assert.equal(await host.locator(".tb-output[data-stale]").count(), 0, "and running clears the stale mark");
+		await page.close();
+	});
+
 	it("truncates a card's fields but never an error", async () => {
 		const page = await browser.newPage();
 		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
 		const host = page.locator("tool-host[tool=percentiles]").first();
 		await host.locator(".tb-facade").click();
-		await page.waitForFunction(() => document.querySelector("tool-host[tool=percentiles]")?.shadowRoot?.querySelector(".tb-more"));
+		await host.locator(".tb-form").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-more").first().waitFor();
 		const fieldCount = await host.locator(".tb-field").count();
 		assert.ok(fieldCount <= 4, `a card should show at most cardFields (4), showed ${fieldCount}`);
-
-		await host.locator("textarea").fill("1 2 nope");
-		await page.waitForFunction(() => document.querySelector("tool-host[tool=percentiles]")?.shadowRoot?.querySelector(".tb-out-error"));
-		const errorText = await host.locator(".tb-error-message").textContent();
-		assert.match(String(errorText), /"nope" is not a number/);
-		assert.ok(!String(errorText).endsWith("…"), "an error must never be abbreviated");
 		await page.close();
 	});
 });
@@ -123,6 +167,7 @@ describe("page mode", () => {
 		const page = await browser.newPage();
 		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
 		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.locator("#host >> .tb-run").click();
 		await page.waitForFunction(() => document.querySelector("#host")?.shadowRoot?.querySelector(".tb-out-chart"), null, { timeout: 15_000 });
 		// Wait well past the last animation frame the run could have queued.
 		await page.waitForTimeout(1200);
@@ -146,11 +191,16 @@ describe("page mode", () => {
 		await page.locator("#host").scrollIntoViewIfNeeded();
 		await page.waitForSelector("#host >> .tb-form");
 		assert.equal(await page.locator("#host >> .tb-field-row").count(), 4, "page mode shows all four inputs");
+		assert.equal(
+			await page.locator("#host >> .tb-progress:not([hidden])").count(),
+			0,
+			"the progress bar stays out of the way until a run is actually slow",
+		);
 
 		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
 		const card = page.locator("tool-host[tool=queue-explorer]").first();
 		await card.locator(".tb-facade").click();
-		await page.waitForSelector("tool-host[tool=queue-explorer] >> .tb-form");
+		await card.locator(".tb-form").waitFor();
 		assert.equal(await card.locator(".tb-field-row").count(), 1, "card mode shows only the primary input");
 		await page.close();
 	});
@@ -163,7 +213,10 @@ describe("embed mode", () => {
 		page.on("pageerror", (error) => errors.push(String(error)));
 		await page.goto(`${BASE}/article.html`, { waitUntil: "load" });
 		for (const id of ["percentiles", "queue-explorer"]) {
-			await page.locator(`tool-host[tool=${id}]`).scrollIntoViewIfNeeded();
+			const embedded = page.locator(`tool-host[tool=${id}]`);
+			await embedded.scrollIntoViewIfNeeded();
+			await embedded.locator(".tb-run").waitFor();
+			await embedded.locator(".tb-run").click();
 			await page.waitForFunction(
 				(toolId) => document.querySelector(`tool-host[tool=${toolId}]`)?.shadowRoot?.querySelector(".tb-output")?.children.length,
 				id,
@@ -194,6 +247,7 @@ describe("failure paths", () => {
 		await host.scrollIntoViewIfNeeded();
 		await host.locator(".tb-form").waitFor();
 		await host.locator("select").selectOption("spin");
+		await host.locator(".tb-run").click();
 
 		await page.waitForFunction(
 			() => document.querySelector('tool-host[tool=stress][mode="page"]')?.shadowRoot?.querySelector(".tb-out-error"),
@@ -208,6 +262,7 @@ describe("failure paths", () => {
 
 		// A fresh worker must be spawned after a kill: the next run has to work.
 		await host.locator("select").selectOption("fine");
+		await host.locator(".tb-run").click();
 		await page.waitForFunction(
 			() => document.querySelector('tool-host[tool=stress][mode="page"]')?.shadowRoot?.textContent?.includes("worked normally"),
 			null,
@@ -224,10 +279,12 @@ describe("failure paths", () => {
 		await host.locator(".tb-form").waitFor();
 
 		await host.locator("select").selectOption("throw");
+		await host.locator(".tb-run").click();
 		await page.waitForFunction(() => document.querySelector('tool-host[tool=stress][mode="page"]')?.shadowRoot?.textContent?.includes("hit a bug"));
 		assert.match(String(await host.locator(".tb-error-message").textContent()), /hit a bug.*cannot read properties/s);
 
 		await host.locator("select").selectOption("bad-input");
+		await host.locator(".tb-run").click();
 		await page.waitForFunction(() => document.querySelector('tool-host[tool=stress][mode="page"]')?.shadowRoot?.textContent?.includes("not something I can work with"));
 		const invalid = await page.evaluate(() =>
 			document.querySelector('tool-host[tool=stress][mode="page"]')?.shadowRoot?.querySelector('[aria-invalid="true"]')?.id,
