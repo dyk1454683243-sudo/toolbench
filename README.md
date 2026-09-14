@@ -1,78 +1,154 @@
 # Toolbench
 
-Publish small interactive tools on a website, and let people run them in the browser.
-
-A tool is **one function and one JSON file**. You write the function; Toolbench draws the form, runs
-the function, and renders the result — in a compact card, on a full page, or in the middle of an
-article. The tool knows nothing about the web, and the website needs no framework.
+Ship small interactive tools on a website. A tool is one function and one JSON file. Toolbench builds
+the form, runs the function, and renders the result.
 
 ```ts
-// tools/double/index.ts
+// tools/reverse/index.ts
 import type { Tool } from "@toolbench/sdk";
 
 export default {
-  run({ n }) {
-    return { kind: "fields", fields: [{ label: "doubled", value: String(Number(n) * 2) }] };
+  run({ text }) {
+    return { kind: "fields", fields: [{ label: "reversed", value: [...text].reverse().join("") }] };
   },
-} satisfies Tool<{ n: string }>;
+} satisfies Tool<{ text: string }>;
 ```
 
 ```html
-<!-- anywhere in any page -->
-<tool-host tool="double" mode="card"></tool-host>
+<tool-host tool="reverse" mode="card"></tool-host>
 ```
 
-That's the whole idea. The rest of this file is what it costs and what it guarantees.
+The tool has no idea it is on the web. The website needs no framework.
 
----
+## Contents
 
-## Why this exists
+- [Why](#why)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Display modes](#display-modes)
+- [How a tool runs](#how-a-tool-runs)
+- [Result shapes](#result-shapes)
+- [Worker mode](#worker-mode)
+- [Theming](#theming)
+- [Size and cost](#size-and-cost)
+- [Browser and runtime support](#browser-and-runtime-support)
+- [Non-goals](#non-goals)
+- [Repository layout](#repository-layout)
+- [Documentation](#documentation)
 
-Interactive widgets on a blog are usually one-offs: a script per widget, wired into one page by hand.
-That works exactly once. The second one repeats the form handling, the error states, the loading
-behaviour and the styling, and by the fourth they have all drifted apart.
+## Why
 
-Toolbench makes the *shape* of a tool a contract instead. What you get for accepting it:
+Interactive widgets on a website are usually one-offs: a script per widget, wired into one page by
+hand. The second widget repeats the form handling, the error states, the loading behaviour and the
+styling. By the fourth they have drifted apart, and none of them has tests.
 
-- **Your fixtures become tests.** A tool ships known-answer cases; they run in plain Node, in a
-  second, with no browser. A broken tool fails your build instead of someone's afternoon.
-- **The interface is consistent** across every tool, and accessible by default — labels, error
-  association, a status region, keyboard operation, reduced motion.
-- **Nothing loads until it is needed.** A card downloads no tool code until someone clicks it.
-- **Old tools keep working.** The contract is versioned, changes are additive, and the compatibility
-  path is tested rather than promised.
+Toolbench turns the shape of a tool into a contract. In exchange:
 
-## What is in this repository
+* **Fixtures are the test suite.** A tool ships known-answer cases that run in Node, with no browser
+  and no build step. A broken tool fails your build instead of someone's afternoon.
+* **One interface for every tool**, accessible by default: real labels, errors tied to the input that
+  caused them, a status region, keyboard operation, reduced-motion support.
+* **Nothing loads until it is needed.** A card downloads no tool code until someone opens it.
+* **Old tools keep working.** The contract is versioned, changes are additive only, and compatibility
+  is enforced by tests rather than intent. See [docs/versioning.md](docs/versioning.md).
 
-| | |
-|---|---|
-| `packages/sdk` | The contract: types, manifest validation, version migration, the fixture runner. No dependencies, no DOM — runs in plain Node. |
-| `packages/runtime` | The `<tool-host>` custom element: form, renderers, worker handling. No framework; ~15 KB gzipped. |
-| `tools/` | Two real example tools. |
-| `bench/` | The test bench: every display mode, both threading modes, and a tool that fails on purpose. |
-| `docs/` | [Authoring a tool](docs/authoring-a-tool.md) · [Versioning](docs/versioning.md) · [Architecture](docs/architecture.md) |
+## Install
+
+```sh
+pnpm add @toolbench/sdk @toolbench/runtime
+```
+
+`@toolbench/sdk` is what tool authors import. It has no dependencies and does not touch the DOM.
+`@toolbench/runtime` is what the website imports. It has no dependencies either, and no framework.
+
+## Quick start
+
+Three steps. The result is a working tool page.
+
+**1. Write the tool.** Four files in a directory:
 
 ```
-pnpm install
-pnpm check        # typecheck + every unit test and fixture
-pnpm bench        # the bench at http://localhost:5180
-pnpm test:bench   # the same bench, driven by a browser
+tools/reverse/
+  tool.json      identity, inputs, result shapes
+  index.ts       the function
+  cases.json     known-answer fixtures
+  README.md      help text
 ```
 
-## The three ways a tool appears
+```jsonc
+// tools/reverse/tool.json
+{
+  "sdk": 1,
+  "id": "reverse",
+  "name": "Reverse text",
+  "blurb": "Reverses a string. Handles emoji correctly, which is most of the interest.",
+  "version": "1.0.0",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "main" },
+  "kinds": ["fields", "error"],
+  "card": "live",
+  "inputs": [
+    { "id": "text", "type": "text", "label": "Text", "primary": true, "default": "hello" }
+  ]
+}
+```
 
-One declaration drives all three. The mode also decides **when the tool's code is downloaded**, which
-is the difference between a page that stays fast and one that does not.
+**2. Register it.** Once per site:
 
-| `mode` | What it shows | When it loads |
+```ts
+import { defineToolHost, RegistrySource } from "@toolbench/runtime";
+import manifest from "./tools/reverse/tool.json";
+
+defineToolHost({
+  source: new RegistrySource({
+    reverse: { manifest, load: () => import("./tools/reverse/index.ts") },
+  }),
+  pageUrl: (id) => `/tools/${id}/`,
+});
+```
+
+With a bundler that supports directory globs, the source is a loop over the glob instead of a literal
+map. [`bench/src/registry.ts`](bench/src/registry.ts) is the version this repository uses, and it
+picks up new tools with no code change.
+
+**3. Put it on a page.**
+
+```html
+<tool-host tool="reverse" mode="page"></tool-host>
+```
+
+**4. Test it.** `cases.json` holds inputs and expected results:
+
+```jsonc
+[
+  {
+    "name": "reverses a string",
+    "input": { "text": "abc" },
+    "expect": { "kind": "fields", "fields": [{ "label": "reversed", "value": "cba" }] }
+  }
+]
+```
+
+```sh
+node --test tools/cases.test.ts
+```
+
+Full walkthrough: [docs/authoring-a-tool.md](docs/authoring-a-tool.md).
+
+## Display modes
+
+One declaration drives three presentations. The mode also decides when the tool's code is fetched,
+which is the difference between a page that stays fast and one that does not.
+
+| `mode` | Shows | Fetches the tool's code |
 |---|---|---|
-| `card` | Name, blurb, the one input marked `primary`, the first few result fields | **When clicked.** Until then it is static markup |
-| `page` | Everything: all inputs, the full result, the tool's links | When it scrolls near the viewport |
-| `embed` | No title — sized for the middle of an article | When it scrolls near the viewport |
+| `card` | Name, blurb, the input marked `primary`, the first few result fields | When the reader opens it. Until then the card is static markup. |
+| `page` | Every input, the full result, the tool's links | When it scrolls within two viewports |
+| `embed` | Same as `page` without the title, sized for the middle of an article | When it scrolls within two viewports |
 
-A card is a *facade*: real markup, no behaviour, no download. If your site renders HTML on the server,
-give it a **seed** — the tool's result for its default inputs, computed at build time — and the card
-shows a real answer before any JavaScript arrives:
+A card is a facade: markup with no behaviour and no download. If your site renders HTML ahead of time,
+give the card a **seed**, which is the tool's result for its default inputs computed during the build.
+The card then shows a real result with no JavaScript at all:
 
 ```html
 <tool-host tool="percentiles" mode="card">
@@ -84,51 +160,46 @@ shows a real answer before any JavaScript arrives:
 
 ## How a tool runs
 
-**The reader decides.** Nothing runs on its own:
+The reader decides. Nothing runs on its own.
 
-- Opening a card, or scrolling a tool into view, loads its code and shows the form. It does **not**
-  run the tool.
-- **Run** runs it. So does <kbd>Enter</kbd> in a single-line input, or <kbd>⌘/Ctrl</kbd> +
+* Opening a card, or scrolling a tool into view, loads its code and shows the form. It does not run
+  the tool.
+* **Run** runs it. So does <kbd>Enter</kbd> in a single-line input, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> +
   <kbd>Enter</kbd> in a textarea.
-- Changing an input **marks the result stale** — the previous answer dims and the status says so —
-  rather than recomputing. The old answer is still the last true one, and keeping it lets you compare.
-- A tool that is genuinely instant can opt into `"autoRun": true` and update as you type. It is off by
-  default, and worker-mode tools may not use it.
+* Changing an input marks the current result stale: it dims, and the status line says so. The previous
+  result stays on screen because it is still the last true one, and keeping it is what lets you compare
+  before and after.
+* A tool that is genuinely instant can set `"autoRun": true` and update as the reader types. It is off
+  by default, and the validator rejects it for worker-mode tools.
 
 The progress bar appears only if a run is still going after 400 ms. A bar that flashes for 20 ms draws
 the eye to report that nothing happened.
 
-## Adding it to a website
+## Result shapes
 
-Three things, once:
+A tool returns one of a closed set of shapes, so the runtime can draw anything a tool produces and a
+tool cannot invent something nobody can render.
 
-```ts
-import { defineToolHost, RegistrySource } from "@toolbench/runtime";
+| Kind | Use for |
+|---|---|
+| `fields` | Label and value pairs, optionally grouped under headings |
+| `table` | Columns and rows, with alignment and per-cell emphasis |
+| `series` | A chart with axes, legend and annotations. Ships the same numbers as a table for readers who cannot see it |
+| `text` | Prose or preformatted output |
+| `code` | Source, with a language tag the host can highlight |
+| `group` | Several of the above in one result. A decoder that returns fields *and* a table is the common case |
+| `error` | The input was wrong. Naming the input marks that control invalid and attaches the message to it |
 
-defineToolHost({
-  // 1. Where tools come from. This one reads a directory your bundler already sees.
-  source: new RegistrySource({
-    percentiles: {
-      manifest: percentilesManifest,               // the parsed tool.json
-      load: () => import("./tools/percentiles/index.ts"),
-    },
-  }),
+Returning `error` means the input was bad and the tool worked. Throwing means the tool has a bug. The
+two render differently on purpose.
 
-  // 2. Only needed for tools that declare thread: "worker". See below.
-  workerFactory: () => new Worker(new URL("./tool.worker.ts", import.meta.url), { type: "module" }),
+## Worker mode
 
-  // 3. Where a card's "open the full tool" link points.
-  pageUrl: (id) => `/tools/${id}/`,
-});
-```
+A tool whose running time depends on its input sets `"thread": "worker"`. That is the only mode where a
+timeout can stop a run, because on the main thread there is nothing to terminate.
 
-With a bundler that supports directory globs (Vite, and most others) the source is four lines — see
-[`bench/src/registry.ts`](bench/src/registry.ts) for the version this repository uses.
-
-### Worker mode
-
-A tool whose running time depends on its input declares `thread: "worker"`, and then the host needs
-one small file. It has to live in *your* project, because only your bundler can resolve your tools:
+The host then needs one file, and it has to live in the host project because only the host's bundler
+can resolve the host's tools:
 
 ```ts
 // tool.worker.ts
@@ -138,82 +209,106 @@ import { registry } from "./registry.ts";
 createToolWorker({ load: (id) => registry[id].load() });
 ```
 
-⚠️ **If you use Vite, set `worker: { format: "es" }`.** It defaults to a format that cannot split
-code, so a worker that imports tools works in development and fails the production build.
+```ts
+defineToolHost({
+  source,
+  workerFactory: () => new Worker(new URL("./tool.worker.ts", import.meta.url), { type: "module" }),
+});
+```
 
-### Theming
+Two things to know before you spend an afternoon on them:
 
-The runtime renders inside a shadow root, so your CSS cannot reach in and its CSS cannot leak out.
-Theming is therefore explicit, and it is the only styling API:
+* **Vite defaults `worker.format` to `"iife"`**, which cannot code-split. A worker that imports tools
+  builds in development and fails the production build. Set `worker: { format: "es" }`.
+* If no `workerFactory` is configured, a worker-mode tool runs on the main thread and logs a warning.
+  A slow tool is better than a missing one.
+
+## Theming
+
+The runtime renders inside a shadow root. Your CSS cannot reach in and break a tool, and the tool's CSS
+cannot leak out and break your page. Theming is therefore a list of custom properties, and that list is
+the whole styling API:
 
 ```css
 tool-host {
   --tb-accent: #0b6b5f;
   --tb-bg: #ffffff;
-  --tb-border: #d8e2e0;
+  --tb-surface: #f4fbf9;
+  --tb-border: #b9dbd4;
   --tb-radius: 2px;
   --tb-font: Georgia, serif;
+  --tb-mono: "SF Mono", monospace;
 }
 ```
 
-Every colour, radius and font is a custom property with a sensible default that follows the page's
-light or dark scheme. The full list is at the top of
+Defaults use `light-dark()`, so a tool follows the page's colour scheme before anyone configures
+anything. The full list is at the top of
 [`packages/runtime/src/styles.ts`](packages/runtime/src/styles.ts).
 
-## What a tool can return
+## Size and cost
 
-A closed set of shapes, so the runtime can draw anything a tool produces and a tool cannot invent
-something nobody can render:
+Measured on the built bench with gzip, not estimated:
 
-| Kind | For |
+| | Transfer |
 |---|---|
-| `fields` | Label-and-value pairs, optionally grouped |
-| `table` | Columns and rows |
-| `series` | A chart — with axes, a legend, annotations, and the same data as a table for anyone who cannot see it |
-| `text`, `code` | Plain or monospaced output |
-| `group` | Several of the above in one result. Common: a decode returns fields *and* a table |
-| `error` | The input was wrong. Naming the input marks that control invalid |
+| Runtime, once per page that uses a tool | 16.2 KB |
+| Worker entry, only for pages with a worker-mode tool | 2.8 KB |
+| `percentiles` tool chunk | 1.3 KB |
+| `queue-explorer` tool chunk | 1.2 KB |
+| A page with no tool on it | 0 bytes |
+| A card nobody opens | 0 bytes of tool code |
 
-**Returning `error` means the input was bad. Throwing means the tool has a bug.** The two render
-differently, deliberately.
+Reproduce with `pnpm bench:build`, then gzip the files in `bench/dist/assets/`.
 
-## Versioning, in one paragraph
+## Browser and runtime support
 
-Every tool declares the contract version it was written against (`"sdk": 1`). The runtime supports
-every version it has ever shipped. Changes are additive only — new result kinds, new input types, new
-optional fields — and each version boundary gets a small migration that carries an old tool's manifest
-and output forward. A tool written today keeps working untouched when the runtime is three versions
-ahead, and that claim is tested: every tool's fixtures run against the current runtime on every
-change. A tool asking for a *newer* version than the runtime fails loudly with what it needs, rather
-than rendering an empty box. Details in [docs/versioning.md](docs/versioning.md).
+In the browser the runtime needs custom elements, shadow DOM, `IntersectionObserver`, module workers
+and CSS container queries: Chrome 105+, Firefox 114+, Safari 16.4+.
 
-## What it costs
+Two newer features are used with plain fallbacks in front of them, so a browser without either gets
+light colours rather than a broken layout: `light-dark()` for automatic dark mode (Chrome 123+,
+Firefox 120+, Safari 17.5+) and `color-mix()` for one focus ring. Anything older than the baseline
+above shows the static facade and its seeded result, which is one reason seeding is worth doing.
 
-Measured on the built bench, gzipped:
+Development and tests: Node 24 or newer. Toolbench runs TypeScript directly, which is how fixtures
+execute with no build step. Any bundler for the host site; the examples use Vite 7.
 
-| | |
+## Non-goals
+
+* **Not a code playground.** Readers do not write code here. That needs a compiler in the browser,
+  which is megabytes.
+* **Not a notebook.** No dataflow between tools, no execution order.
+* **Not a sandbox.** A tool is code you wrote and bundled. Worker mode is a stability boundary that
+  lets a slow run be stopped; it is not a security boundary, and the docs never pretend otherwise. Code
+  you did not write needs a different design.
+* **Contract version 1 is pure functions only.** No file input, no network access. Both are planned as
+  additive versions, which is the case the versioning policy exists to handle.
+
+## Repository layout
+
+| Path | What it is |
 |---|---|
-| The runtime, once per page that uses a tool | **~15 KB** |
-| Each tool | **~1 KB**, in its own chunk, loaded on demand |
-| A page with no tool | **0 bytes** |
-| A card nobody clicks | **0 bytes** of tool code |
+| `packages/sdk` | The contract: types, manifest validation, version migration, fixture runner. No dependencies, no DOM. |
+| `packages/runtime` | `<tool-host>`: the element, the form, the renderers, the runner, the worker protocol. |
+| `tools/` | Two example tools, with fixtures and help. |
+| `bench/` | The test bench: three display modes, both threading modes, host theming, and a tool that fails on purpose. |
+| `docs/` | Architecture, authoring, versioning. |
 
-## What it deliberately does not do
+```sh
+pnpm install
+pnpm check          # typecheck, unit tests, every tool's fixtures
+pnpm bench          # the bench on http://localhost:5180
+pnpm test:bench     # the same bench, driven by Chrome
+```
 
-- **It is not a code playground.** Readers do not write code. That needs a compiler in the browser,
-  which costs megabytes.
-- **It is not a notebook.** No dataflow between tools.
-- **It does not sandbox.** A tool is your own code, bundled by your own build. A worker here is a
-  stability boundary — it lets a slow tool be stopped — not a security one. If you ever run code you
-  did not write, that needs a different design.
-- **Version 1 tools are pure functions.** No file input, no network. Both are planned as additive
-  contract versions, which is exactly the case the versioning policy exists for.
+## Documentation
 
-## Requirements
-
-Node 22.6+ (it runs TypeScript directly, which is how tool fixtures execute with no build step), and
-any bundler for the host site. `pnpm` for this repository.
+| Document | For |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How it works, where the boundaries are, how to change it, how to contribute |
+| [docs/authoring-a-tool.md](docs/authoring-a-tool.md) | Writing, testing and shipping a tool |
+| [docs/versioning.md](docs/versioning.md) | The compatibility policy and how to raise the contract version |
 
 ## Licence
 
-MIT.
+[MIT](LICENSE).

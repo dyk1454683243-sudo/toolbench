@@ -1,157 +1,471 @@
 # Authoring a tool
 
-Four files in a directory. No build step, no framework, no browser needed to develop or test it.
+Writing, testing and shipping a tool, start to finish. Read
+[architecture.md](architecture.md) if you want to know why any of this is shaped the way it is.
+
+**Contents**
+
+1. [What a tool is](#1-what-a-tool-is)
+2. [Walkthrough: build one](#2-walkthrough-build-one)
+3. [The manifest, field by field](#3-the-manifest-field-by-field)
+4. [Inputs](#4-inputs)
+5. [Results](#5-results)
+6. [Errors](#6-errors)
+7. [Long-running tools](#7-long-running-tools)
+8. [Fixtures](#8-fixtures)
+9. [Charts](#9-charts)
+10. [Help text](#10-help-text)
+11. [Checklist](#11-checklist)
+12. [Common mistakes](#12-common-mistakes)
+
+---
+
+## 1. What a tool is
+
+A directory with four files:
 
 ```
-tools/my-tool/
-  tool.json      what it is, what it asks for, what it returns
+tools/base64/
+  tool.json      what it is, what it takes, what it can return
   index.ts       the function
-  cases.json     known-answer fixtures — its test suite
-  README.md      the help text shown on its page
+  cases.json     inputs with known answers
+  README.md      help text, shown next to the tool
 ```
 
-## 1. The function
+The function is the whole tool:
 
 ```ts
-import type { Output, Tool } from "@toolbench/sdk";
-
-/** ⚠️ A `type`, not an `interface` — see the note at the bottom. */
-type Input = { text: string; upper: boolean };
-
-const tool: Tool<Input> = {
-  run({ text, upper }, ctx) {
-    if (text.trim() === "") {
-      // The input was wrong, and saying so IS the tool working. Naming the input lets the form
-      // mark that control invalid and point a screen reader at the message.
-      return { kind: "error", message: "Nothing to reverse yet.", input: "text" };
-    }
-    const reversed = [...text].reverse().join("");
-    return {
-      kind: "fields",
-      fields: [{ label: "reversed", value: upper ? reversed.toUpperCase() : reversed }],
-    } satisfies Output;
-  },
-};
-
-export default tool;
+run(input, ctx) -> Output
 ```
 
-Rules, all of them:
+Three rules, and none of them are style preferences:
 
-- **`run` is a function of its inputs.** No DOM, no clock, no unseeded randomness, no network. That
-  is what lets it be tested by fixture and run at build time.
-- **Return `error` for bad input. Throw for a bug in the tool.** They render differently on purpose.
-- **A loop whose length depends on an input must check `ctx.signal`**, and the tool should declare
-  `thread: "worker"` so a timeout can stop it.
+1. **No DOM.** `run` executes in Node during tests, in a worker where no DOM exists, and possibly
+   during a site build. Reaching for `document` breaks all three.
+2. **A function of its inputs.** No clock, no unseeded randomness, no network, no files. This is what
+   makes a fixture mean anything. Randomness is fine if it comes from a seeded generator whose seed is
+   an input; `tools/queue-explorer` does exactly that.
+3. **Cancellable if it can be slow.** Any loop whose length comes from an input checks `ctx.signal`.
 
-## 2. The manifest
+## 2. Walkthrough: build one
+
+A Base64 decoder. It is a good first tool because it has real errors, and it wants two result shapes at
+once.
+
+### Step 1: the manifest
 
 ```jsonc
+// tools/base64/tool.json
 {
-  "sdk": 1,                          // the contract version — see docs/versioning.md
-  "id": "my-tool",                   // must match the directory name
-  "name": "My tool",
-  "blurb": "One sentence. Used on cards and as a page description.",
+  "sdk": 1,
+  "id": "base64",
+  "name": "Base64 decoder",
+  "blurb": "Decodes Base64 and shows what the bytes actually are, including where it breaks.",
   "version": "1.0.0",
   "capabilities": ["pure"],
   "runtime": { "entry": "index.ts", "thread": "main" },
-  "kinds": ["fields", "error"],      // every kind `run` can return
-  "card": "live",                    // live | info | none
-  "cardFields": 4,
-  "autoRun": false,                  // default. true = update as the reader types
+  "kinds": ["group", "fields", "table", "error"],
+  "card": "live",
+  "cardFields": 3,
   "inputs": [
     {
-      "id": "text",
+      "id": "source",
       "type": "textarea",
-      "label": "Text",
-      "description": "Shown under the control, and read by a screen reader.",
-      "primary": true,               // the one input a card shows. At most one
-      "default": "hello"
+      "label": "Base64",
+      "description": "Standard or URL-safe alphabet. Padding optional.",
+      "primary": true,
+      "dir": "ltr",
+      "rows": 3,
+      "default": "SGVsbG8sIHdvcmxkIQ=="
     },
-    { "id": "upper", "type": "toggle", "label": "Shout", "default": false }
-  ],
-  "help": "README.md",
-  "links": [{ "label": "The spec", "href": "https://example.org/spec" }]
+    {
+      "id": "view",
+      "type": "select",
+      "label": "Show bytes as",
+      "default": "hex",
+      "options": [
+        { "value": "hex", "label": "Hex" },
+        { "value": "ascii", "label": "ASCII" }
+      ]
+    }
+  ]
 }
 ```
 
-The validator refuses things that would fail later, and says which field is wrong. A few worth
-knowing about before you hit them:
+`dir: "ltr"` matters more than it looks. Base64 is not prose, and inside a right-to-left page it would
+otherwise be laid out backwards.
 
-- a `number` input **must** declare `min` and `max` — they are the only guard against an input that
-  turns a bounded computation into an unbounded one;
-- `kinds` must include `"error"`, because every tool can be given bad input;
-- `timeoutMs` is rejected unless `thread` is `"worker"`. On the main thread there is nothing to
-  terminate, so the field would be a lie;
-- only a `pure` tool may be `card: "live"` — a compact slot must not read files or call networks;
-- `autoRun` is rejected on a worker-mode tool. A tool declared `thread: "worker"` did so because its
-  running time depends on its input, which is the definition of a tool that should not run on every
-  keystroke.
+### Step 2: the function
 
-**Nothing runs by itself.** The reader presses Run (or Enter). Changing an input marks the previous
-result stale rather than recomputing it. `autoRun: true` opts a genuinely instant tool into updating as
-you type — reach for it rarely.
+```ts
+// tools/base64/index.ts
+import type { Output, Tool } from "@toolbench/sdk";
 
-## 3. The fixtures
+// A type alias, not an interface. An interface does not satisfy the SDK's index-signature
+// constraint, and the error you get for that is not obvious.
+type Input = { source: string; view: string };
 
-`cases.json` is the tool's test suite, and it runs in Node in milliseconds.
+const ALPHABET = /^[A-Za-z0-9+/\-_]*={0,2}$/;
+
+export default {
+  run({ source, view }): Output {
+    const trimmed = source.replace(/\s+/g, "");
+    if (trimmed.length === 0) {
+      return { kind: "error", message: "Nothing to decode.", input: "source" };
+    }
+    if (!ALPHABET.test(trimmed)) {
+      const at = trimmed.search(/[^A-Za-z0-9+/\-_=]/);
+      return {
+        kind: "error",
+        message: `"${trimmed[at]}" is not a Base64 character.`,
+        input: "source",
+        at,
+        len: 1,
+      };
+    }
+
+    const bytes = decode(trimmed);
+    return {
+      kind: "group",
+      parts: [
+        {
+          kind: "fields",
+          fields: [
+            { label: "Bytes", value: String(bytes.length) },
+            { label: "Padding", value: trimmed.endsWith("=") ? "present" : "absent" },
+            { label: "Alphabet", value: /[-_]/.test(trimmed) ? "URL-safe" : "standard" },
+          ],
+        },
+        {
+          kind: "table",
+          caption: "Sixteen bytes per row",
+          columns: [
+            { key: "offset", label: "Offset", align: "end" },
+            { key: "bytes", label: view === "hex" ? "Hex" : "ASCII", mono: true },
+          ],
+          rows: rowsOf(bytes, view),
+        },
+      ],
+    };
+  },
+} satisfies Tool<Input>;
+```
+
+`decode` and `rowsOf` are left out; they are ordinary functions in the same file with nothing
+Toolbench-specific about them.
+
+Four decisions worth copying:
+
+* **`error` for bad input, with `input` naming the control.** That is what marks the textarea invalid
+  and attaches the message to it for a screen reader. `at` and `len` say where in the string, so the
+  host can point at the exact character.
+* **`group`** because the summary and the bytes are both the answer. Not one or the other.
+* **`align: "end"` on the numeric column**, because misaligned numbers cannot be scanned.
+* **`mono: true`** on the byte column, because proportional hex is unreadable.
+
+### Step 3: fixtures
 
 ```jsonc
+// tools/base64/cases.json
 [
   {
-    "name": "reverses, and shouts when asked",
-    "input": { "text": "abc", "upper": true },
-    "expect": { "kind": "fields", "fields": [{ "label": "reversed", "value": "CBA" }] }
+    "name": "decodes the canonical example",
+    "input": { "source": "SGVsbG8sIHdvcmxkIQ==", "view": "ascii" },
+    "expect": {
+      "kind": "group",
+      "parts": [
+        {
+          "kind": "fields",
+          "fields": [
+            { "label": "Bytes", "value": "13" },
+            { "label": "Padding", "value": "present" },
+            { "label": "Alphabet", "value": "standard" }
+          ]
+        },
+        {
+          "kind": "table",
+          "caption": "Sixteen bytes per row",
+          "columns": [
+            { "key": "offset", "label": "Offset", "align": "end" },
+            { "key": "bytes", "label": "ASCII", "mono": true }
+          ],
+          "rows": [[{ "value": "0" }, { "value": "Hello, world!" }]]
+        }
+      ]
+    }
   },
   {
-    "name": "empty input is a question, not a crash",
-    "input": { "text": "  ", "upper": false },
-    "expect": { "kind": "error", "message": "Nothing to reverse yet.", "input": "text" }
+    "name": "rejects a character outside the alphabet, and says where",
+    "input": { "source": "SGVs*bG8=", "view": "hex" },
+    "expect": { "kind": "error", "message": "\"*\" is not a Base64 character.", "input": "source", "at": 4, "len": 1 }
+  },
+  {
+    "name": "empty input is an error, not an empty result",
+    "input": { "source": "   ", "view": "hex" },
+    "expect": { "kind": "error", "message": "Nothing to decode.", "input": "source" }
   }
 ]
 ```
 
-**Matching is exact by default.** That is what catches a field emitted twice, fields reordered, a
-field quietly dropped, or garbage returned beside a correct error message.
+Exact matching by default is the point. If the tool starts emitting a field twice, or reorders them, or
+returns something plausible alongside a correct error, the fixture fails. A "contains what I expected"
+check passes all three.
 
-When a tool's output is genuinely open-ended — a `group` with several parts, say — a case may opt out,
-and it owes two things in return:
+### Step 4: run it
+
+```sh
+node --test tools/cases.test.ts
+```
+
+That file walks every tool directory, so a new tool is picked up with no registration. It checks the
+manifest validates, that `id` equals the directory name, that `cases.json` exists and is not empty,
+that every case's kind is declared in `kinds`, and then runs the cases.
+
+### Step 5: see it
+
+```sh
+pnpm bench
+```
+
+The bench globs `tools/*`, so the new tool appears in the gallery on the front page and at
+`/tool.html?id=base64`. Click through all three modes. Every visual bug worth mentioning in this
+repository was found by looking at the thing, not by reasoning about it.
+
+## 3. The manifest, field by field
+
+| Field | Required | Notes |
+|---|---|---|
+| `sdk` | yes | Contract version. `1` today. Do not raise it to get a feature that does not exist yet. |
+| `id` | yes | Lowercase, digits, hyphens. Must equal the directory name; a test enforces that. It is also a URL segment. |
+| `name` | yes | Sentence case. It is a heading, not a title. |
+| `blurb` | yes | One sentence, under 200 characters. It is the card line and the page's meta description. Say what the tool does, not that it is useful. |
+| `version` | yes | The tool's own version. Semver by convention. Nothing branches on it. |
+| `capabilities` | yes | `["pure"]`. That is the only value in contract version 1. |
+| `runtime.entry` | yes | Relative to the tool directory. |
+| `runtime.thread` | no | `"main"` (default) or `"worker"`. See §7. |
+| `inputs` | yes | At least one. A tool with none is a constant. |
+| `kinds` | yes | Every kind `run` can return, `"error"` included. Both halves are checked by tests. |
+| `card` | no | `"info"` (default) shows the blurb only, `"live"` makes it runnable, `"none"` keeps it off cards. `"live"` requires `["pure"]`. |
+| `cardFields` | no | How many fields a compact result shows before "+N more". Default 4. |
+| `autoRun` | no | Run as the reader types. Default off. Refused for worker tools. Only for genuinely instant tools. |
+| `timeoutMs` | no | 100 to 30000. Worker only; declaring it on the main thread is an error, because there is nothing there to terminate. Default 5000. |
+| `status` | no | `"live"` (default), `"deprecated"`, `"retired"`. |
+| `help` | no | Path to Markdown, relative to the tool directory. |
+| `tags` | no | Free-form strings for the host's own grouping. |
+| `links` | no | `{ label, href }`. Specs, source, further reading. |
+
+## 4. Inputs
+
+Five types. Each generates a labelled control with its description wired to `aria-describedby`.
 
 ```jsonc
-{
-  "name": "the summary half",
-  "input": { "values": "1 2 3" },
-  "match": "subset",
-  "why": "this case is about the summary fields; the full group is asserted exactly elsewhere",
-  "fieldCount": 6,
-  "expect": { "kind": "fields", "fields": [{ "label": "p50", "value": "2" }] }
+{ "id": "text",  "type": "text",     "label": "Pattern", "default": "^a.*z$", "maxLength": 200 }
+{ "id": "body",  "type": "textarea", "label": "Input",   "default": "",       "rows": 6 }
+{ "id": "n",     "type": "number",   "label": "Samples", "default": 1000, "min": 1, "max": 100000, "step": 1, "unit": "samples" }
+{ "id": "mode",  "type": "select",   "label": "Mode",    "default": "fast",
+  "options": [{ "value": "fast", "label": "Fast" }, { "value": "exact", "label": "Exact" }] }
+{ "id": "trace", "type": "toggle",   "label": "Show trace", "default": false }
+```
+
+Things the validator will hold you to, and why:
+
+* **`min` and `max` are required on a number.** They are the only thing between a bounded computation
+  and a hang, and the element clamps to them before your function is called. That means `run` can trust
+  its range and skip the defensive check.
+* **A select needs two or more options**, and the default must be one of them. One option is a constant.
+* **`unit` on any number that has one.** `1000` alone is a riddle; `1000 samples` is not.
+* **`description` is not a placeholder.** Placeholder text vanishes when someone types, which is when
+  they most want it.
+* **At most one input is `primary`.** A card shows exactly that one, so pick the one that makes the tool
+  worth opening.
+* **`dir: "ltr"`** on anything that is not prose: bytes, code, patterns, identifiers.
+
+## 5. Results
+
+```ts
+{ kind: "fields", fields: [
+    { label: "p50", value: "120", unit: "ms" },
+    { label: "p99", value: "1450", unit: "ms", tone: "warn", note: "tail is 12x the median" },
+    { label: "Arrival rate", value: "800", group: "Inputs" },
+]}
+```
+
+`tone` is `"good" | "warn" | "bad"`, for when a number's meaning is not obvious from the number.
+`note` is the sentence a reader would otherwise have to work out. `group` puts fields under a heading,
+which is how one result holds two comparable sets: `tools/queue-explorer` uses "Formula" and
+"Simulation" side by side.
+
+```ts
+{ kind: "table",
+  columns: [{ key: "n", label: "Bucket", align: "end" }, { key: "hits", label: "Hits", align: "end", mono: true }],
+  rows: [[{ value: "0-10" }, { value: "812" }], [{ value: "10-20" }, { value: "39", tone: "warn" }]],
+  caption: "Latency distribution" }
+
+{ kind: "text", text: "Converged after 4 iterations.", mono: false }
+
+{ kind: "code", lang: "json", source: '{"ok":true}' }
+
+{ kind: "group", parts: [ /* any of the above */ ] }
+```
+
+Two notes on `group`. Order matters: a **card renders only the first part**, so put the part that works
+alone at the front. And declare every kind you use, `"group"` included.
+
+## 6. Errors
+
+Two different situations, and a reader can tell them apart only if you keep them apart.
+
+**Bad input.** Return an `error`. The tool worked.
+
+```ts
+return {
+  kind: "error",
+  message: `"${token}" is not a number.`,
+  input: "values",   // marks that control invalid, attaches the message to it
+  at: offset,        // character offset, if you know it
+  len: token.length,
+};
+```
+
+Write the message so it says what is wrong, where, and what would be right. `"nope" is not a number`
+beats `Invalid input`. Never abbreviate an error; a browser test asserts that an error never ends in an
+ellipsis, because the truncated half is the half that says what to fix.
+
+**A bug in the tool.** Throw. The runtime says "This tool hit a bug and stopped", puts the stack in the
+console, and does not pretend the input was at fault. Do not catch your own bugs and report them as
+input errors; that sends the reader off to fix something that was never broken.
+
+## 7. Long-running tools
+
+If the running time depends on an input, declare a worker and honour the signal:
+
+```jsonc
+"runtime": { "entry": "index.ts", "thread": "worker" },
+"timeoutMs": 8000
+```
+
+```ts
+run({ samples }, ctx) {
+  for (let i = 0; i < samples; i++) {
+    if ((i & 0x3ff) === 0) {
+      if (ctx.signal.aborted) throw new DOMException("Aborted", "AbortError");
+      ctx.progress(i / samples);
+    }
+    // ... work
+  }
 }
 ```
 
-Subset matching looks **inside a group** for a part of the expected kind, identifies fields by
-*group + label*, and matches an error message by substring. `fieldCount` is mandatory so a dropped
-field still fails.
+* **Check every 1024 iterations, not every one.** Reading `signal.aborted` a million times is itself
+  the slow part.
+* **`ctx.progress(fraction)`** takes 0 to 1. The runtime coalesces calls to one animation frame, so
+  calling it often is cheap, and the progress bar only appears if the run outlasts 400 ms.
+* **`ctx.progress(fraction, partial)`** can pass a partial `Output` to draw as the run proceeds. Useful
+  for a converging simulation. The final result always wins, whatever order the frames arrive in.
+* **Worker mode is a stability boundary, not a security one.** It exists so a runaway loop can be
+  terminated without freezing the page. It shares the page's origin and cookies.
+* **`autoRun` is refused here.** A tool that declared a worker did so because it can be slow.
 
-Run them:
+## 8. Fixtures
 
+`cases.json` is an array of cases. Fields:
+
+| Field | Meaning |
+|---|---|
+| `name` | What the case establishes. "handles empty input" beats "test 2" |
+| `input` | Partial input. Anything omitted comes from the manifest defaults |
+| `expect` | The expected `Output`, compared exactly by default |
+| `match` | `"exact"` (default) or `"subset"` |
+| `why` | Required with `subset`. Say what the case is pinning and what it deliberately is not |
+| `fieldCount` | Required with `subset` on a `fields` result, so a dropped field still fails |
+| `maxMs` | Optional per-case budget |
+
+Subset matching is for results that are mostly computed numbers:
+
+```jsonc
+{
+  "name": "simulation lands near the closed form at rho = 0.8",
+  "input": { "lambda": 8, "mu": 10, "samples": 20000, "seed": 42 },
+  "match": "subset",
+  "why": "the simulated numbers are checked for convergence in convergence.test.ts; this case pins the shape and the analytic half",
+  "fieldCount": 8,
+  "expect": { "kind": "fields", "fields": [{ "group": "Formula", "label": "Utilisation", "value": "0.800" }] }
+}
 ```
-pnpm test                     # every tool's fixtures, plus the SDK's own tests
+
+Note where the work is split. The fixture pins the shape and the exactly-known numbers. The claim that
+the simulation is *right* lives in a unit test that can say why: it asserts the simulation converges on
+the closed form, that the same seed gives the same answer, and that Little's law holds. Pinning two
+hundred computed digits in a fixture would test that nothing changed, which is not the same as testing
+that it is correct.
+
+Aim for four to six cases: the canonical example, an edge (empty, one element, the maximum), a
+bad-input error, and anything that was once a bug.
+
+## 9. Charts
+
+```ts
+{ kind: "series", chart: {
+    title: "Wait time against utilisation",
+    x: { label: "Utilisation", min: 0, max: 1, format: "fixed2" },
+    y: { label: "Wait", unit: "ms", format: "compact" },
+    series: [
+      { name: "M/M/1", shape: "line", points: [{ x: 0.1, y: 11 }, { x: 0.5, y: 100 }] },
+      { name: "Simulated", shape: "line", axis: "right", points: [/* ... */] },
+    ],
+    annotations: [{ x: 0.8, label: "knee" }],
+}}
 ```
 
-## 4. The help
+* `shape` is `"line"`, `"area"` or `"bar"`.
+* `axis: "right"` for a second scale. The renderer reserves the extra padding for it, so labels are not
+  clipped.
+* `format` is per axis, not per value. A mix of `20, 15, 10, 5.00` on one axis is a formatting bug, and
+  the reason formatting is chosen once per axis.
+* Six series colours, then they repeat. A chart needing seven series needs rethinking.
+* Every chart also renders as a table inside a `<details>`, automatically. A chart is an image, and a
+  screen reader gets nothing from an image. You do not have to do anything to get this, but it is worth
+  knowing that your axis labels and series names are read aloud.
 
-`README.md` beside the tool. A host renders it on the tool's page. Write it for someone who has the
-tool in front of them and wants to know what the numbers mean.
+## 10. Help text
 
----
+`README.md` in the tool directory, referenced by `help`. The host renders it beside or below the tool.
+What earns its place:
 
-## Two gotchas worth reading before you hit them
+* what the tool computes, in one paragraph;
+* the formula, the algorithm, or the spec section, with a link;
+* what it does **not** handle. This is the most useful part and the most often missing;
+* where the numbers come from, if any are hard-coded.
 
-**Declare your input type as a `type`, not an `interface`.** TypeScript gives an implicit index
-signature to a type alias and not to an interface, so an interface will not satisfy `InputValues` and
-the error message ("index signature is missing") does not hint at the fix.
+## 11. Checklist
 
-**No `enum`, `namespace`, decorators or constructor parameter properties.** Tools are compiled with
-`erasableSyntaxOnly`, because Node runs them directly by stripping types — anything that *emits* code
-would work through a bundler and fail in the fixture runner. The compiler enforces this, so you will
-find out immediately rather than in CI.
+- [ ] `id` matches the directory name
+- [ ] `blurb` is one sentence under 200 characters, and says what the tool does
+- [ ] Every number input has `min`, `max` and a `unit`
+- [ ] Every input has a `description` that is not a restatement of its label
+- [ ] Exactly one input is `primary`, and it is the interesting one
+- [ ] Non-prose inputs are `dir: "ltr"`
+- [ ] `kinds` lists every kind `run` can return, `"error"` included
+- [ ] Bad input returns `error` with `input` naming the control
+- [ ] `run` touches no DOM, no clock, no network, no unseeded randomness
+- [ ] Any input-dependent loop checks `ctx.signal`, and the tool declares `thread: "worker"`
+- [ ] Four or more cases: canonical, edge, error, past bug
+- [ ] Every `subset` case has a `why` that says what is deliberately not pinned
+- [ ] `README.md` says what the tool does not handle
+- [ ] `node --test tools/cases.test.ts` passes
+- [ ] Looked at it in `pnpm bench`, in all three modes
+
+## 12. Common mistakes
+
+| Mistake | What happens | Fix |
+|---|---|---|
+| `interface Input` instead of `type Input` | `Tool<Input>` does not compile, with an unhelpful message about index signatures | Use a `type` alias. TypeScript gives type aliases an implicit index signature; interfaces do not |
+| Returning a bare `fields` when the answer is also a table | Half the answer is missing | `group` |
+| Putting the chart first in a group | The card shows a chart with no context | Order by what works alone |
+| Forgetting `"error"` in `kinds` | Validation fails at startup | Add it. Every tool can be given bad input |
+| Catching your own bug and returning `error` | The reader goes looking for a mistake they did not make | Throw. Bugs and bad input are different |
+| Unbounded loop on the main thread | The page freezes and nothing can stop it | `min`/`max` on the input, and `thread: "worker"` |
+| `timeoutMs` with `thread: "main"` | Validation fails | Move to a worker or bound the input. A main-thread timeout cannot fire |
+| Ignoring `ctx.signal` | A timeout terminates the worker, so the reader is fine, but every cancelled run costs a full worker restart | Check the signal every 1024 iterations |
+| `Math.random()` or `Date.now()` in `run` | Fixtures pass locally and fail in CI, or pass every second time | Take a seed as an input. See `tools/queue-explorer` |
+| A `subset` case with no `why` | The fixture runner refuses it | Say what is pinned and what is not, or make it exact |

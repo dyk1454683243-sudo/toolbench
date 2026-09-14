@@ -15,6 +15,20 @@
 export const STYLES = /* css */ `
 :host {
   /* ── Theming surface. A host overrides any of these on tool-host, and that is the whole API. ── */
+  /* Light values first, as a plain fallback: a browser without light-dark() would otherwise drop the
+     whole declaration and inherit whatever the page had, which looks broken rather than plain. The
+     second declaration wins wherever the function is supported. */
+  --tb-bg:        #ffffff;
+  --tb-fg:        #1a1c22;
+  --tb-muted:     #5c6270;
+  --tb-faint:     #767d8c;
+  --tb-border:    #e2e5ea;
+  --tb-surface:   #f7f8fa;
+  --tb-accent:    #8a5a00;
+  --tb-accent-bg: #fff6e6;
+  --tb-bad:       #a3242c;
+  --tb-warn:      #8a5a00;
+  --tb-good:      #1c6b3c;
   --tb-bg:        light-dark(#ffffff, #16171d);
   --tb-fg:        light-dark(#1a1c22, #e7e9ee);
   --tb-muted:     light-dark(#5c6270, #9aa1b1);
@@ -32,6 +46,8 @@ export const STYLES = /* css */ `
   --tb-gap:       0.75rem;
 
   /* Series colours. Six, then they repeat — a chart needing seven is a chart needing a rethink. */
+  --tb-s1: #8a5a00; --tb-s2: #5b3fa8; --tb-s3: #0f6e6e;
+  --tb-s4: #1f5aa8; --tb-s5: #a02a5e; --tb-s6: #2d6b32;
   --tb-s1: light-dark(#8a5a00, #e0b877);
   --tb-s2: light-dark(#5b3fa8, #c4a5f0);
   --tb-s3: light-dark(#0f6e6e, #7fd1d1);
@@ -104,7 +120,8 @@ export const STYLES = /* css */ `
 }
 .tb-run[disabled] { opacity: 0.5; cursor: default; }
 /* Set while a result is stale, so the button that resolves it is the thing that draws the eye. */
-.tb-run[data-attention] { box-shadow: 0 0 0 3px color-mix(in oklab, var(--tb-accent) 28%, transparent); }
+.tb-run[data-attention] { outline: 2px solid var(--tb-accent); outline-offset: 2px; }
+.tb-run[data-attention] { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--tb-accent) 28%, transparent); }
 @media (prefers-reduced-motion: reduce) { .tb-run[data-attention] { box-shadow: none; text-decoration: underline; } }
 .tb-progress[hidden] { display: none; }
 .tb-progress {
@@ -167,6 +184,7 @@ export const STYLES = /* css */ `
 .tb-out-error {
   display: flex; gap: 0.5rem; align-items: baseline;
   padding: 0.5rem 0.6875rem;
+  background: #fdf2f2;
   background: light-dark(#fdf2f2, #2a1a1c);
   border: 1px solid var(--tb-bad);
   border-radius: 8px;
