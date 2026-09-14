@@ -8,7 +8,7 @@
 # diff you approve is the exact version bump and changelog that ships.
 #
 # Setup this needs once, see docs/releasing.md:
-#   - an npm org named `toolbench` (free for public packages)
+#   - an npm org named `toolbench`, created at npmjs.com/org/create (no CLI for this)
 #   - either a trusted publisher on npm, or a repository secret NPM_TOKEN
 #   - a repository variable PUBLISH_TO_NPM set to "true"
 name: release

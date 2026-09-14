@@ -130,12 +130,18 @@ Pick the packages, pick patch or minor, and write one sentence a consumer would 
 
 Neither of these exists yet. Both are needed before the first publish.
 
-**1. The npm org.** `@toolbench` is an npm scope, and a scope needs an org. Free for public packages.
+**1. The npm org.** `@toolbench` is a scope, and a scope belongs to either a user or an org. The npm
+account is `eknowledger`, so `@toolbench` needs an org of that name.
 
-```sh
-npm login
-npm org create toolbench      # or create it at npmjs.com/org/create
-```
+⚠️ **There is no CLI command for this.** `npm org` only manages the members of an org that already
+exists; `npm org create` is not a command. Creating an org is a web-only flow:
+
+1. <https://www.npmjs.com/org/create>
+2. Name it `toolbench`, choose the **Free** plan (unlimited public packages).
+3. Confirm with `npm org ls toolbench`, which should list you as `owner`.
+
+Until the org exists, `npm publish` fails with a 404 and "Scope not found", which is not an obvious way
+of saying "make the org first".
 
 **2. Authentication.** Two ways, and the workflow supports both. `changesets/action` prefers OIDC when
 it is available, so the token is a fallback rather than the plan.
@@ -145,12 +151,20 @@ it is available, so the token is a fallback rather than the plan.
 per package, so the package has to exist first: publish 0.1.0 by hand (§8), then switch, then no secret
 is stored anywhere.
 
-*Token (needed for the very first publish, or instead of the above).* Create a **granular access token**
-with write access to the `@toolbench` scope, give it an expiry, and add it as a repository secret:
+*Token (only if you are not doing the first publish by hand).* Create a **granular access token** with
+write access to the `@toolbench` scope, give it an expiry, and add it as a repository secret:
 
 ```sh
 gh secret set NPM_TOKEN
 ```
+
+Publishing 0.1.0 by hand from a laptop avoids creating this token at all, which is the better path: no
+long-lived credential with publish rights then exists anywhere. See §8.
+
+*Enable 2FA on the npm account first, either way.* npm is actively restricting tokens that bypass 2FA
+(the notice shows up in our own CI logs), and an account that can publish a package other people install
+should have it on. Trusted publishing via OIDC is exempt from the 2FA prompt, so it does not fight this.
+A manual publish will prompt for a one-time code, which is the intended friction.
 
 **3. Turn publishing on.** The workflow will not publish until you say so:
 
