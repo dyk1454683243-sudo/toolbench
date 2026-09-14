@@ -1,0 +1,67 @@
+# The slow half: real builds, real browser, real transfer sizes.
+#
+# Separate from tests.yml so it gets its own badge and runs in parallel. It answers a different
+# question: not "is the logic right" but "does what we ship actually work and stay small".
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: packages, bench, browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Check the published package contents
+        # What actually lands in the tarball. `files: ["dist"]` plus the README and LICENSE npm adds
+        # for us; anything else in here means a stray file is about to be published, and unpublishing
+        # is not really a thing.
+        run: |
+          pnpm --filter @toolbench/sdk exec npm pack --dry-run
+          pnpm --filter @toolbench/runtime exec npm pack --dry-run
+
+      - name: Build the bench
+        run: pnpm bench:build
+
+      - name: Transfer size budget
+        # The sizes quoted in README.md and docs/architecture.md, checked. A number in a document
+        # rots the moment nobody checks it, and the lazy-loading argument rests on these staying
+        # small. Also catches a chunk vanishing or stopping being split.
+        run: node scripts/size-check.mjs
+
+      - name: The runtime, in a real browser
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          CHROME_CHANNEL=chromium pnpm test:bench
+
+      - name: Keep the built bench
+        # Useful on a failure: you can download it and open the exact build the browser tests ran
+        # against, rather than trying to reproduce the state locally.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-dist
+          path: bench/dist
+          retention-days: 7
+          if-no-files-found: error

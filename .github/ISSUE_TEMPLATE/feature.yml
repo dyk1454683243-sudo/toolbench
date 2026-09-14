@@ -1,0 +1,37 @@
+name: Feature or change
+description: Propose something the framework should do
+labels: ["type: enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth checking [docs/architecture.md §15](https://github.com/eknowledger/toolbench/blob/main/docs/architecture.md#15-limitations)
+        first: some absences are deliberate, and it says which.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to build, and where the framework got in the way. Not the solution yet.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Sketch the API or the manifest field if you have one. Rough is fine.
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Does this need a new contract version?
+      description: A new output kind, input type or capability does. See docs/versioning.md.
+      options:
+        - "No, it fits the current contract"
+        - "Yes, it needs a new output kind, input type or capability"
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: If there is a workaround, what makes it unsatisfactory?

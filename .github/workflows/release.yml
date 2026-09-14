@@ -1,0 +1,85 @@
+# Publish to npm, in two steps with a human in the middle.
+#
+# 1. Someone merges a PR to main that contains a changeset. This workflow opens (or updates) a
+#    "Release: version packages" PR: version numbers bumped, changelogs written.
+# 2. Someone merges THAT PR. This workflow runs again, finds no pending changesets, and publishes.
+#
+# The gate is merging the release PR, so nothing reaches npm because a test happened to pass. The
+# diff you approve is the exact version bump and changelog that ships.
+#
+# Setup this needs once, see docs/releasing.md:
+#   - an npm org named `toolbench` (free for public packages)
+#   - a repository secret NPM_TOKEN holding a granular automation token
+name: release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  # Never two releases at once: the second would publish a half-updated set of versions.
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: version or publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the version bump, create the git tag and the GitHub release
+      pull-requests: write # open and update the release PR
+      id-token: write # npm provenance: proves on npm that this build came from this commit
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # changesets needs history to work out what changed
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org # writes the .npmrc auth line for us
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify before publishing
+        # Deliberately duplicates tests.yml and build.yml rather than trusting that they ran. This is
+        # the last gate before something is public and unrepealable, and npm has no undo.
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+      - name: Version or publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          # `pnpm release` builds first, then publishes. Building inside the release script rather
+          # than relying on the step above means a manual `pnpm release` cannot publish stale dist.
+          publish: pnpm release
+          version: pnpm changeset version
+          commit: "chore: version packages"
+          title: "Release: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+
+      - name: Say what happened
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.published }}
+          PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          if [ "$PUBLISHED" = "true" ]; then
+            echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            echo "$PACKAGES" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No publish this run. Either a release PR is waiting to be merged, or there was" \
+                 "nothing pending." >> "$GITHUB_STEP_SUMMARY"
+          fi

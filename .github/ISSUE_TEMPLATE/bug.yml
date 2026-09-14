@@ -1,0 +1,54 @@
+name: Bug report
+description: Something behaves differently from what the docs say
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If it is visual, a screenshot saves us both a round trip. If it is a security issue, use
+        [private reporting](https://github.com/eknowledger/toolbench/security/advisories/new) instead,
+        and read SECURITY.md first: some things that look like vulnerabilities here are documented design.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what happened, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: A tool manifest and input, or a page, or the steps in `pnpm bench`.
+      placeholder: |
+        1. pnpm bench
+        2. open the queue-explorer card
+        3. press Run
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - "@toolbench/runtime (rendering, the element, running a tool)"
+        - "@toolbench/sdk (validation, migration, fixtures)"
+        - The bench
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Package version, browser, and Node if it is a test or build problem.
+      placeholder: "runtime 0.1.0, Firefox 141, Node 24.4"
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Anything in the browser console or the terminal. Paste it as text, not a screenshot.
+      render: shell

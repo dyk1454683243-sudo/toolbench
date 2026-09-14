@@ -13,7 +13,10 @@
     "bench": "pnpm --filter @toolbench/bench dev",
     "bench:build": "pnpm --filter @toolbench/bench build",
     "check": "pnpm typecheck && pnpm test",
-    "test:bench": "node --test bench/*.test.ts"
+    "test:bench": "node --test bench/*.test.ts",
+    "size": "node scripts/size-check.mjs",
+    "release": "pnpm build && changeset publish",
+    "changeset": "changeset"
   },
   "devDependencies": {
     "@changesets/changelog-github": "0.5.1",

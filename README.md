@@ -1,5 +1,17 @@
 # Toolbench
 
+[![tests](https://github.com/eknowledger/toolbench/actions/workflows/tests.yml/badge.svg)](https://github.com/eknowledger/toolbench/actions/workflows/tests.yml)
+[![build](https://github.com/eknowledger/toolbench/actions/workflows/build.yml/badge.svg)](https://github.com/eknowledger/toolbench/actions/workflows/build.yml)
+[![npm](https://img.shields.io/npm/v/@toolbench/runtime?logo=npm&label=npm)](https://www.npmjs.com/package/@toolbench/runtime)
+[![release](https://img.shields.io/github/v/release/eknowledger/toolbench?label=release&sort=semver)](https://github.com/eknowledger/toolbench/releases)
+[![contract](https://img.shields.io/badge/contract-v1-informational)](docs/versioning.md)
+[![runtime size](https://img.shields.io/badge/runtime-16.3%20KB%20gzip-brightgreen)](#size-and-cost)
+[![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#install)
+[![types](https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white)](packages/sdk/src/types.ts)
+[![node](https://img.shields.io/badge/node-%3E%3D24%20to%20develop-5FA04E?logo=node.js&logoColor=white)](#browser-and-runtime-support)
+[![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+
 Ship small interactive tools on a website. A tool is one function and one JSON file. Toolbench builds
 the form, runs the function, and renders the result.
 
@@ -309,6 +321,9 @@ pnpm test:bench     # the same bench, driven by Chrome
 | [docs/architecture.md](docs/architecture.md) | How it works, where the boundaries are, how to change it, how to contribute |
 | [docs/authoring-a-tool.md](docs/authoring-a-tool.md) | Writing, testing and shipping a tool |
 | [docs/versioning.md](docs/versioning.md) | The compatibility policy and how to raise the contract version |
+| [docs/releasing.md](docs/releasing.md) | How versions are decided and how a release reaches npm |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, the loop, and which opinions are load bearing |
+| [SECURITY.md](SECURITY.md) | The threat model, and what is in scope to report |
 
 ## Licence
 

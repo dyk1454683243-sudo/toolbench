@@ -1,0 +1,62 @@
+# Fast feedback: types and every Node-runnable test. Under a minute.
+#
+# Split from build.yml so the two get their own status badges and run in parallel. This is the one
+# that should fail first when something is wrong, because it is the one people wait for.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: types and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          # 24 runs TypeScript directly, which is how tool fixtures execute with no build step.
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests and every tool's fixtures
+        # ⚠️ This is the load-bearing compatibility check: EVERY tool's fixtures run against the
+        # current SDK and runtime. If a change breaks a tool written against an older contract
+        # version, it fails here, which is what makes backward compatibility a tested claim rather
+        # than an intention. See docs/versioning.md.
+        run: pnpm test
+
+      - name: Changeset present for a package change
+        # A change under packages/ that a consumer would notice needs a release note. Advisory on
+        # purpose: plenty of package changes (comments, tests, internal renames) genuinely need no
+        # changeset, and a hard failure would just teach people to write empty ones.
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        # Refs go through env rather than being interpolated into the script. They are repo-controlled
+        # here, but a workflow that interpolates a ref straight into a shell is one edit away from
+        # being injectable, and the habit is cheaper than the audit.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          changed=$(git diff --name-only "origin/$BASE_REF"...HEAD)
+          if echo "$changed" | grep -q '^packages/'; then
+            if ! echo "$changed" | grep -qE '^\.changeset/.*\.md$'; then
+              echo "::warning::This PR touches packages/ but adds no changeset. If a consumer would notice the change, run 'pnpm changeset'. If not, ignore this."
+            fi
+          fi
