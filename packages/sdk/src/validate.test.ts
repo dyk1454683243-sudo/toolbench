@@ -108,4 +108,102 @@ describe("validateManifest", () => {
 		m.card = "live";
 		assert.equal(validateManifest(m).card, "live");
 	});
+
+	// --- samples: checked against the inputs they claim to fill ----------------------------------
+	it("accepts samples that name real inputs", () => {
+		const m = validateManifest({ ...good(), samples: [{ label: "Middle", input: { value: 5 } }] });
+		assert.equal(m.samples?.length, 1);
+		assert.equal(m.samples?.[0]?.label, "Middle");
+	});
+
+	it("rejects a sample naming an input that does not exist, and lists the ones that do", () => {
+		failsWith((m) => { m.samples = [{ label: "Typo", input: { valeu: 5 } }]; }, "samples[0].input.valeu", "names no input");
+	});
+
+	it("rejects a sample whose value is the wrong type for the input it fills", () => {
+		failsWith((m) => { m.samples = [{ label: "Words", input: { value: "five" } }]; }, "samples[0].input.value", "finite number");
+	});
+
+	/*
+	 * Deliberately not the clamp the typed path applies. A reader's out-of-range number is clamped
+	 * because refusing it would leave them stuck; an author's is static data CI reads, so it can be a
+	 * build error. Clamping it would ship a button labelled "High" whose value is the maximum.
+	 */
+	it("rejects a sample number outside the input's range rather than clamping an author's typo", () => {
+		failsWith((m) => { m.samples = [{ label: "High", input: { value: 99 } }]; }, "samples[0].input.value", "outside");
+	});
+
+	it("rejects a sample that fills nothing", () => {
+		failsWith((m) => { m.samples = [{ label: "Empty", input: {} }]; }, "samples[0].input", "sets no values");
+	});
+
+	it("rejects an empty samples array rather than accepting a key that says nothing", () => {
+		failsWith((m) => { m.samples = []; }, "samples", "omit the key");
+	});
+
+	it("rejects duplicate sample labels, which would render as two identical buttons", () => {
+		failsWith((m) => {
+			m.samples = [
+				{ label: "Same", input: { value: 1 } },
+				{ label: "Same", input: { value: 2 } },
+			];
+		}, "samples", "unique");
+	});
+
+	it("rejects a sample select value that is not one of the options", () => {
+		failsWith((m) => {
+			m.inputs = [
+				{ id: "mode", type: "select", label: "Mode", default: "fast", options: [{ value: "fast", label: "Fast" }, { value: "exact", label: "Exact" }] },
+			];
+			m.samples = [{ label: "Sloppy", input: { mode: "quick" } }];
+		}, "samples[0].input.mode", "option values");
+	});
+
+	/*
+	 * The text and toggle arms of that switch were implemented and checked by hand, and nothing held
+	 * them in place: the tests above only reach the number and select arms, so a refactor could have
+	 * dropped either one and stayed green. Every arm now has a test.
+	 */
+	it("rejects a sample value that is not a string for a text input", () => {
+		failsWith((m) => {
+			m.inputs = [{ id: "pattern", type: "text", label: "Pattern", default: "" }];
+			m.samples = [{ label: "A number", input: { pattern: 42 } }];
+		}, "samples[0].input.pattern", "must be a string");
+	});
+
+	/*
+	 * The DOM's maxlength attribute constrains typing only, and filling a control from a sample assigns
+	 * its value directly, so nothing downstream would catch this.
+	 */
+	it("rejects a sample string longer than its input's maxLength", () => {
+		failsWith((m) => {
+			m.inputs = [{ id: "pattern", type: "text", label: "Pattern", default: "", maxLength: 8 }];
+			m.samples = [{ label: "Too long", input: { pattern: "123456789" } }];
+		}, "samples[0].input.pattern", "maxLength");
+	});
+
+	it("rejects a sample value that is not a boolean for a toggle", () => {
+		failsWith((m) => {
+			m.inputs = [{ id: "trace", type: "toggle", label: "Show trace", default: false }];
+			m.samples = [{ label: "Truthy", input: { trace: "yes" } }];
+		}, "samples[0].input.trace", "true or false");
+	});
+
+	it("rejects samples that are not an array", () => {
+		failsWith((m) => { m.samples = { label: "One", input: { value: 1 } }; }, "samples", "must be an array");
+	});
+
+	it("rejects a sample with no label, which would render as an unnamed button", () => {
+		failsWith((m) => { m.samples = [{ input: { value: 5 } }]; }, "samples[0].label", "non-empty string");
+	});
+
+	it("accepts a partial sample, which is the usual case: change the one thing the example is about", () => {
+		const m = good() as Record<string, unknown>;
+		m.inputs = [
+			{ id: "value", type: "number", label: "Value", default: 1, min: 0, max: 10 },
+			{ id: "note", type: "text", label: "Note", default: "" },
+		];
+		m.samples = [{ label: "Just the number", input: { value: 7 } }];
+		assert.deepEqual(validateManifest(m).samples?.[0]?.input, { value: 7 }, "an input the sample does not name is left alone");
+	});
 });

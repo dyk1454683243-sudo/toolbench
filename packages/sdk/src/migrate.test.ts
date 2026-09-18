@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { canLoad, MIGRATIONS, type Migration, upgradeManifest, upgradeOutput, VersionError } from "./migrate.ts";
 import type { Output } from "./types.ts";
-import { SDK_VERSION, SUPPORTED_SDK_VERSIONS } from "./version.ts";
+import { SDK_CHANGELOG, SDK_VERSION, SUPPORTED_SDK_VERSIONS } from "./version.ts";
 
 /**
  * These tests use SYNTHETIC versions rather than real ones.
  *
- * The point is to prove the mechanism carries an old tool forward, and to prove it while contract
- * version 1 is the only real version — otherwise the compatibility machinery would first be
- * exercised on the day it is needed, which is the day you least want to be debugging it.
+ * They were written while contract version 1 was the only real version, to prove the mechanism carries
+ * an old tool forward before anything depended on it: the alternative is exercising the compatibility
+ * machinery for the first time on the day it is needed, which is the day you least want to be
+ * debugging it. They stay now that versions 2 and 3 are real, because every real step so far is the
+ * identity function, and a synthetic chain is the only place a step that actually transforms something
+ * can be tested.
  *
  * The synthetic chain models exactly what a real additive change looks like: version 2 renames
  * nothing and removes nothing, it only adds. So the migration's job is to fill in what an old tool
@@ -131,18 +134,33 @@ describe("upgradeOutput", () => {
  * actual MIGRATIONS export, because a compatibility mechanism that only works against test doubles is
  * not a compatibility mechanism.
  */
-describe("the real 1 -> 2 chain", () => {
-	it("has exactly one step, and it is additive", () => {
-		assert.equal(MIGRATIONS.length, 1, "one step per version boundary");
-		assert.equal(MIGRATIONS[0]?.from, 1);
+describe("the real 1 -> 3 chain", () => {
+	it("has one step per version boundary, and every step is additive", () => {
+		// The invariant rather than today's numbers, so the next bump has two fewer things to remember.
+		assert.equal(MIGRATIONS.length, SDK_VERSION - 1, "one step per version boundary");
+		assert.deepEqual(
+			MIGRATIONS.map((step) => step.from),
+			Array.from({ length: SDK_VERSION - 1 }, (_, i) => i + 1),
+		);
 		/*
-		 * The mechanical test from docs/versioning.md §3: if either half has to transform something,
-		 * the change took something away and is not a version bump but a break.
+		 * The mechanical test from docs/versioning.md §3, applied to every step rather than only to the
+		 * newest: if either half has to transform something, the change took something away and is a
+		 * break rather than a version bump.
+		 *
+		 * ⚠️ The probe is a whole manifest, not two keys. A `{ sdk, id }` probe cannot see a step that
+		 * rewrites an existing field, which is precisely the non-additive change this test exists to
+		 * catch: a step rewriting `help` passed it untouched. It is also stamped with the version of the
+		 * step under test, because a step is free to branch on the version it runs at, and probing the
+		 * 2 → 3 step with `sdk: 1` never reaches that branch.
 		 */
-		const manifest = { sdk: 1, id: "x" };
+		const probe = { ...v1manifest, help: "README.md", samples: [{ label: "One", input: { n: 1 } }] };
 		const output: Output = { kind: "fields", fields: [{ label: "a", value: "1" }] };
-		assert.deepEqual(MIGRATIONS[0]?.manifest(manifest), manifest, "manifest half must be the identity");
-		assert.deepEqual(MIGRATIONS[0]?.output(output), output, "output half must be the identity");
+		for (const step of MIGRATIONS) {
+			const boundary = `${step.from} -> ${step.from + 1}`;
+			const manifest = { ...probe, sdk: step.from };
+			assert.deepEqual(step.manifest(manifest), manifest, `${boundary} manifest half must be the identity`);
+			assert.deepEqual(step.output(output), output, `${boundary} output half must be the identity`);
+		}
 	});
 
 	it("carries a v1 manifest up to the current version untouched apart from sdk", () => {
@@ -151,6 +169,40 @@ describe("the real 1 -> 2 chain", () => {
 		assert.equal(upgraded.sdk, SDK_VERSION, "declares the current contract after upgrade");
 		assert.equal(upgraded.id, "old-tool");
 		assert.deepEqual(upgraded.kinds, ["fields", "error"], "nothing else is rewritten");
+	});
+
+	it("carries a v2 manifest up to the current version untouched apart from sdk", () => {
+		const v2 = { sdk: 2, id: "dumper", name: "Dumper", kinds: ["bytes", "error"] };
+		const upgraded = upgradeManifest(v2);
+		assert.equal(upgraded.sdk, SDK_VERSION, "declares the current contract after upgrade");
+		assert.deepEqual(upgraded.kinds, ["bytes", "error"], "nothing else is rewritten");
+		/*
+		 * An allowlist of the keys that went in, rather than a check that `samples` in particular is
+		 * absent. A denylist only catches the key you thought of, and a step inventing `sampels` passed
+		 * one. The same reasoning as the working agreement's rule about asserting what loaded.
+		 */
+		assert.deepEqual(
+			Object.keys(upgraded).sort(),
+			Object.keys(v2).sort(),
+			"a migration must not invent a key the author did not write, including an example they did not choose",
+		);
+	});
+
+	it("supports every version up to the current one, and can explain each of them", () => {
+		/*
+		 * The one half-done state of the docs/versioning.md §5 checklist that is otherwise silent:
+		 * raising the version and appending to SUPPORTED_SDK_VERSIONS but forgetting the changelog entry.
+		 * Nothing fails, and the message a too-old runtime prints degrades to "unknown contract version
+		 * 3" at exactly the moment somebody reads it.
+		 */
+		assert.deepEqual(
+			[...SUPPORTED_SDK_VERSIONS],
+			Array.from({ length: SDK_VERSION }, (_, i) => i + 1),
+			"the list never shrinks and never skips; §7 shrinking it is a deliberate act that should edit this test too",
+		);
+		for (const version of SUPPORTED_SDK_VERSIONS) {
+			assert.ok(SDK_CHANGELOG[version], `contract version ${version} needs an SDK_CHANGELOG entry: error messages quote it`);
+		}
 	});
 
 	it("leaves a v1 tool's output alone", () => {
