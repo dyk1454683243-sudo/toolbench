@@ -15,7 +15,7 @@ A tool is one function and one JSON file. Toolbench builds the form, runs it, an
 
 [![tests](https://github.com/eknowledger/toolbench/actions/workflows/tests.yml/badge.svg)](https://github.com/eknowledger/toolbench/actions/workflows/tests.yml) [![build](https://github.com/eknowledger/toolbench/actions/workflows/build.yml/badge.svg)](https://github.com/eknowledger/toolbench/actions/workflows/build.yml) [![npm](https://img.shields.io/npm/v/@toolbench/runtime?logo=npm&label=npm)](https://www.npmjs.com/package/@toolbench/runtime) [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-[![contract](https://img.shields.io/badge/contract-v3-informational)](docs/versioning.md) [![runtime size](https://img.shields.io/badge/runtime-18.9%20KB%20gzip-brightgreen)](#size-and-cost) [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#install) [![types](https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white)](packages/sdk/src/types.ts) [![node](https://img.shields.io/badge/node-%3E%3D24-5FA04E?logo=node.js&logoColor=white)](#browser-and-runtime-support) [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+[![contract](https://img.shields.io/badge/contract-v3-informational)](docs/versioning.md) [![runtime size](https://img.shields.io/badge/runtime-19.5%20KB%20gzip-brightgreen)](#size-and-cost) [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#install) [![types](https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white)](packages/sdk/src/types.ts) [![node](https://img.shields.io/badge/node-%3E%3D24-5FA04E?logo=node.js&logoColor=white)](#browser-and-runtime-support) [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
 </div>
 
@@ -243,9 +243,22 @@ which is the difference between a page that stays fast and one that does not.
 
 | `mode` | Shows | Fetches the tool's code |
 |---|---|---|
-| `card` | Name, blurb, the input marked `primary`, the first few result fields | When the reader opens it. Until then the card is static markup. |
+| `card` | Name, blurb, the inputs marked `primary`, the first result part | When the reader opens it. Until then the card is static markup. |
 | `page` | Every input, the full result, the tool's links | When it scrolls within two viewports |
 | `embed` | Same as `page` without the title, sized for the middle of an article | When it scrolls within two viewports |
+
+A card shows one result part by default, which is too few for a tool whose answer is a number *and* a
+curve: the number alone hides how steep the curve is, and the curve alone is a set of unnamed lines. Give
+the card more room with `parts`:
+
+```html
+<tool-host tool="queue-explorer" mode="card" parts="2"></tool-host>
+```
+
+An attribute rather than a manifest key, deliberately. How much room a card has is a property of the page
+it sits on, not of the tool: the same tool is a one-part card in a sidebar and a two-part card leading a
+section, and a manifest cannot know which. Whatever does not fit is counted, not hidden, and a compact
+chart keeps its legend so its lines stay identifiable.
 
 A card is a facade: markup with no behaviour and no download. If your site renders HTML ahead of time,
 give the card a **seed**: the tool's result for its default inputs, computed during your build. The card
@@ -389,7 +402,7 @@ Measured on the built bench with gzip, not estimated:
 
 | | Transfer |
 |---|---|
-| Runtime plus the bench's page wiring, once per page that uses a tool | 18.9 KB |
+| Runtime plus the bench's page wiring, once per page that uses a tool | 19.5 KB |
 | Worker entry, only for pages with a worker-mode tool | 3.3 KB |
 | `percentiles` tool chunk | 1.2 KB |
 | `queue-explorer` tool chunk | 1.2 KB |

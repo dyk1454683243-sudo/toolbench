@@ -240,7 +240,7 @@ interface InputBase {
   label: string;
   description?: string;   // becomes aria-describedby, not a placeholder
   unit?: string;          // "ms", "req/s". A number without one is a riddle
-  primary?: boolean;      // the single input a card shows
+  primary?: boolean;      // show this input on a compact card; mark as many as the question needs
   dir?: "ltr" | "auto";   // bytes and code stay left to right inside right-to-left prose
 }
 ```
@@ -553,7 +553,7 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 | `manifest.sdk` is a version this SDK can read | `migrate.ts`, `validate.ts` | A tool from the future renders half correctly |
 | `id` matches `^[a-z0-9][a-z0-9-]*$` and equals the directory name | `validate.ts`, `tools/cases.test.ts` | Derived links and routes point at the wrong tool |
 | No two tools share an `id` | `RegistrySource` constructor | One silently shadows the other |
-| Input ids are unique; at most one is `primary` | `validate.ts` | A card would have to guess which input to show |
+| Input ids are unique | `validate.ts` | Two inputs answering to one id makes a form ambiguous and a fixture unreadable |
 | A number input declares `min` and `max` | `validate.ts` | An unbounded input turns a bounded computation into a hang |
 | A select has two or more options and its default is one of them | `validate.ts` | A control with one choice, or none selected |
 | `kinds` includes `"error"` | `validate.ts` | A tool with no way to reject bad input |
@@ -753,7 +753,7 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 18.9 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, and 0.9 KB with contract v3's sample row |
+| Runtime plus the bench's own wiring | 19.5 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, and 0.5 KB with richer cards |
 | Stylesheet | 0.9 KB | |
 | Worker entry | 3.3 KB | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
@@ -765,9 +765,11 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
-That chunk now measures 18,925 bytes against a 19,000 byte ceiling, so the next thing that costs real
+That chunk now measures 19,454 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
-table with it, or takes the chart split above.
+table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
+bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
+rather than only here.
 
 **One duplication to know about.** Vite builds a worker in a separate Rollup pass, so every tool
 reachable from the worker is emitted twice: `tool-<id>` for the main thread and `worker-tool-<id>` for

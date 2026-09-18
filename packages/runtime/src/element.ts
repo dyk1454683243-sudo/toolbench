@@ -68,7 +68,7 @@ export function defineToolHost(options: ToolHostConfig, tagName = "tool-host"): 
 }
 
 export class ToolHost extends HTMLElement {
-	static readonly observedAttributes = ["tool", "mode"];
+	static readonly observedAttributes = ["tool", "mode", "parts"];
 
 	#root: ShadowRoot;
 	#runner: Runner | undefined;
@@ -86,6 +86,7 @@ export class ToolHost extends HTMLElement {
 	#els: {
 		output?: HTMLElement;
 		status?: HTMLElement;
+		announce?: HTMLElement;
 		run?: HTMLButtonElement;
 		progress?: HTMLElement;
 	} = {};
@@ -110,6 +111,19 @@ export class ToolHost extends HTMLElement {
 	get mode(): Mode {
 		const mode = this.getAttribute("mode");
 		return mode === "card" || mode === "embed" ? mode : "page";
+	}
+
+	/**
+	 * How many parts of a grouped result a compact card shows. Default 1.
+	 *
+	 * An attribute rather than a manifest key, and deliberately: how much room a card has is a property of
+	 * the page it is on, not of the tool. The same tool is a one-part card in a sidebar and a two-part card
+	 * leading a section, and a manifest cannot know which. Ignored outside `mode="card"`, where everything
+	 * is shown anyway.
+	 */
+	get cardParts(): number {
+		const raw = Number(this.getAttribute("parts"));
+		return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1;
 	}
 
 	get toolId(): string {
@@ -292,7 +306,16 @@ export class ToolHost extends HTMLElement {
 			});
 			this.#setBusy(false);
 			this.#draw(output);
-			this.#say(summarise(output, this.mode === "card"));
+			/*
+			 * ⚠️ An error stays on the VISIBLE line; a result only gets announced.
+			 *
+			 * The split is between "here is what happened, and you can see it" and "here is what happened,
+			 * and you need to do something". A summary of a result that is already on screen is metadata and
+			 * reads as debug output; an error is the one outcome a reader has to act on, so it says so where
+			 * they are looking. Announcing it too would say it twice to a screen reader.
+			 */
+			if (output.kind === "error") this.#say(summarise(output, this.mode === "card"));
+			else this.#announce(summarise(output, this.mode === "card"));
 			this.#markInvalid(output.kind === "error" ? output.input : undefined);
 			if (options.focusResult) this.#els.output?.focus();
 		} catch (error) {
@@ -358,7 +381,13 @@ export class ToolHost extends HTMLElement {
 				"div",
 				{ class: "tb-body" },
 				mode === "page" ? null : el("p", { class: "tb-blurb" }, manifest.blurb),
-				this.#seed ? render(this.#seed, { compact, ...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}) }) : null,
+				this.#seed
+					? render(this.#seed, {
+							compact,
+							cardParts: this.cardParts,
+							...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
+						})
+					: null,
 				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : this.#seed ? "Try it" : "Open this tool"),
 			);
 			if (compact && !this.#loading) {
@@ -386,9 +415,19 @@ export class ToolHost extends HTMLElement {
 		// Hidden until a run outlasts SLOW_MS. A bar that flashes for 20 ms is noise.
 		const progress = el("div", { class: "tb-progress", "aria-hidden": "true", hidden: true }, el("i", { style: "width:0%" }));
 		const status = el("p", { class: "tb-status", role: "status", "aria-live": "polite" });
+		/*
+		 * ⚠️ A second live region, and this one is never seen.
+		 *
+		 * A result summary, "6 fields, chart, 2 series, table, 5 rows", is exactly what a screen reader needs
+		 * and exactly what a sighted reader does not: it rendered above the result as a line of metadata that
+		 * reads like debug output, describing something already on screen. Announcing it here and leaving the
+		 * visible line for what a reader can act on, "press Run", "inputs changed", an error, keeps both
+		 * audiences served without either paying for the other.
+		 */
+		const announce = el("p", { class: "tb-announce tb-sr", role: "status", "aria-live": "polite" });
 		const output = el("div", { class: "tb-output", tabindex: "-1" });
 
-		this.#els = { run, progress, status, output };
+		this.#els = { run, progress, status, announce, output };
 		body.append(form);
 		/*
 		 * Not on a card. A card has room for one input and a Run button, and a row of buttons would crowd
@@ -396,7 +435,7 @@ export class ToolHost extends HTMLElement {
 		 */
 		const samples = manifest.samples ?? [];
 		if (!compact && samples.length > 0) body.append(this.#sampleRow(samples));
-		body.append(el("div", { class: "tb-actions" }, run, progress), status, output);
+		body.append(el("div", { class: "tb-actions" }, run, progress), status, announce, output);
 		frame.append(body);
 
 		if (mode !== "card" && (manifest.links?.length ?? 0) > 0) {
@@ -622,6 +661,7 @@ export class ToolHost extends HTMLElement {
 				target,
 				render(output, {
 					compact,
+					cardParts: this.cardParts,
 					...(manifest?.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
 				}),
 			);
@@ -666,9 +706,24 @@ export class ToolHost extends HTMLElement {
 		if (bar) bar.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
 	}
 
-	/** The short announcement. Deliberately not the whole result — see the note at the top. */
+	/**
+	 * The visible line: what a reader can act on. Prompts, and errors.
+	 *
+	 * Deliberately not the whole result — see the note at the top of this file.
+	 */
 	#say(message: string): void {
 		if (this.#els.status) this.#els.status.textContent = message;
+	}
+
+	/**
+	 * The unseen line: what a result was, for anyone who cannot see it.
+	 *
+	 * Also clears the visible line, because after a run the result itself is the feedback and a summary of
+	 * something on screen is noise.
+	 */
+	#announce(message: string): void {
+		if (this.#els.announce) this.#els.announce.textContent = message;
+		this.#say("");
 	}
 
 	#readInlineSeed(): void {
@@ -688,9 +743,19 @@ export class ToolHost extends HTMLElement {
 	}
 }
 
+/**
+ * The inputs a compact card shows: every one marked `primary`, or the first if none is.
+ *
+ * ⚠️ This used to take exactly one, with `find` rather than `filter`, and that made `primary` a boolean
+ * whose second use was silently ignored. A manifest saying three inputs are primary got one, with nothing
+ * to say why. `primary` reads as "worth showing when space is short", and a tool whose question needs two
+ * numbers to be worth asking could not express it.
+ *
+ * Behaviour is unchanged for a manifest marking one input, or none, which is every tool that exists today.
+ */
 function primaryOnly(inputs: InputSpec[]): InputSpec[] {
-	const primary = inputs.find((input) => input.primary === true);
-	return primary ? [primary] : inputs.slice(0, 1);
+	const primary = inputs.filter((input) => input.primary === true);
+	return primary.length > 0 ? primary : inputs.slice(0, 1);
 }
 
 /**
