@@ -26,6 +26,11 @@ function toolChunk(id: string, prefix: string): string | null {
 	 * all three entries import it statically.
 	 */
 	if (/\/bench\/src\/theme\.ts$/.test(id)) return "bench-theme";
+	/*
+	 * Same honesty as the theme switch. The demo highlighter is a host concern and must not land
+	 * in `boot`, which is the number the README quotes for what a consumer pays.
+	 */
+	if (/\/bench\/src\/highlight\.ts$/.test(id)) return "bench-highlight";
 	return null;
 }
 

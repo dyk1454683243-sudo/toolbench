@@ -191,6 +191,8 @@ defineToolHost({
     reverse: { manifest, load: () => import("./tools/reverse/index.ts") },
   }),
   pageUrl: (id) => `/tools/${id}/`,
+  // Optional. Return a Node, never a string: the runtime will not assign innerHTML.
+  // highlight: (source, lang) => yourHighlighter(source, lang),
 });
 ```
 
@@ -336,7 +338,7 @@ tool cannot invent something nobody can render.
 | `table` | Columns and rows, with alignment and per-cell emphasis |
 | `series` | A chart with axes, legend and annotations. Ships the same numbers as a table for readers who cannot see it |
 | `text` | Prose or preformatted output |
-| `code` | Source, with a language tag the host can highlight |
+| `code` | Source, with a language tag. The runtime renders preformatted text. A host that already has a highlighter passes `highlight?: (source, lang) => Node` to `defineToolHost` |
 | `bytes` | Raw bytes as a reader of a wire format wants them: offsets, hex, a printable gutter, and named ranges that can wrap a row |
 | `group` | Several of the above in one result. A decoder that returns fields *and* a table is the common case |
 | `error` | The input was wrong. Naming the input marks that control invalid and attaches the message to it |

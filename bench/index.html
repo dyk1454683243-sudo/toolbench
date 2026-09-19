@@ -74,6 +74,17 @@
 		</p>
 		<tool-host tool="stress" mode="page"></tool-host>
 
+		<h2>Code highlighting: a host hook</h2>
+		<p class="note">
+			A <code>code</code> result is readable preformatted text unless the host passes
+			<code>highlight</code> to <code>defineToolHost</code>. The runtime does not bundle a
+			highlighter: that would roughly double it, and a host usually already has one. This bench
+			passes a tiny demo highlighter that returns a <code>Node</code>, not a string, so the
+			no-<code>innerHTML</code> rule still holds. Append <code>?plain-code</code> to see the
+			path a host that omits the hook still gets.
+		</p>
+		<tool-host tool="json-code" mode="page"></tool-host>
+
 		<h2>A tool that does not exist</h2>
 		<p class="note">A host will get this wrong eventually, so it has to fail legibly.</p>
 		<tool-host tool="not-a-real-tool" mode="card"></tool-host>
