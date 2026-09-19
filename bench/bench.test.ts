@@ -471,6 +471,16 @@ describe("sample inputs — contract version 3", () => {
 					outlineWidth: cs.outlineWidth,
 					outlineOffset: cs.outlineOffset,
 					boxShadow: cs.boxShadow,
+					/*
+					 * Everything else a ring could be drawn with. Read so the assertion below can be an
+					 * allowlist of what attention is allowed to change, rather than a list of the two
+					 * mechanisms someone happened to think of.
+					 */
+					borderStyle: cs.borderStyle,
+					borderWidth: cs.borderWidth,
+					borderColor: cs.borderColor,
+					filter: cs.filter,
+					textDecorationLine: cs.textDecorationLine,
 					focusVisible: run.matches(":focus-visible"),
 				};
 			});
@@ -487,6 +497,27 @@ describe("sample inputs — contract version 3", () => {
 			return outline || cue.boxShadow !== "none";
 		};
 
+		/*
+		 * The allowlist, and the reason it is one. Naming the two mechanisms attention must not use
+		 * only catches the two mechanisms somebody thought of: a ring drawn with a border, a
+		 * drop-shadow filter or an underline would pass a denylist untouched. So instead, assert that
+		 * attention changes the fill and NOTHING else, which fails whatever the next ring is made of.
+		 */
+		const ringProperties = ["outlineStyle", "outlineWidth", "boxShadow", "borderStyle", "borderWidth", "borderColor", "filter", "textDecorationLine"] as const;
+		const assertOnlyTheFillMoved = (
+			idle: NonNullable<Awaited<ReturnType<typeof readRun>>>,
+			attention: NonNullable<Awaited<ReturnType<typeof readRun>>>,
+			label: string,
+		) => {
+			for (const property of ringProperties) {
+				assert.equal(
+					attention[property],
+					idle[property],
+					`${label}: attention changed ${property} (${idle[property]} -> ${attention[property]}). Attention is a fill, and every other property here is a way of drawing a ring.`,
+				);
+			}
+		};
+
 		const assertFillNotRing = (
 			idle: NonNullable<Awaited<ReturnType<typeof readRun>>>,
 			attention: NonNullable<Awaited<ReturnType<typeof readRun>>>,
@@ -501,6 +532,7 @@ describe("sample inputs — contract version 3", () => {
 				colourDistance(idle.background, attention.background) > 20,
 				`${label}: attention must be a noticeable fill change (${idle.background} -> ${attention.background})`,
 			);
+			assertOnlyTheFillMoved(idle, attention, label);
 		};
 
 		for (const theme of ["light", "dark"] as const) {

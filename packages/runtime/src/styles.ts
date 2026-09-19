@@ -123,11 +123,18 @@ export const STYLES = /* css */ `
 .tb-run[disabled] { opacity: 0.5; cursor: default; }
 /* Set while a result is stale, so the button that resolves it is the thing that draws the eye.
    A ring is the :focus-visible vocabulary on this same button. After a sample click the pill
-   keeps focus and Run asks to be pressed, so two rings on screen read as two foci. A hotter
-   fill is a different language, and it is paint, so prefers-reduced-motion still sees it.
+   keeps focus and Run asks to be pressed, so two rings on screen read as two foci. A fill is a
+   different language, and it is paint, so prefers-reduced-motion still sees it.
+   The fill moves AWAY from the page behind it, darker on white and paler on near-black, so it
+   gains contrast against the surface. Disabled goes the other way, toward the background, which
+   is what keeps the two apart.
    ⚠️ Do not set outline or box-shadow here. Equal specificity would hide :focus-visible, and
    a halo is the same family as the focus ring regardless of how it is drawn. */
 .tb-run[data-attention] {
+  /* Light value first, as a plain fallback, matching the tokens at the top of this file: without
+     it a browser that has color-mix but not light-dark() drops the declaration and shows no cue
+     at all, which is the one outcome worse than a ring. */
+  background: color-mix(in oklab, var(--tb-accent) 70%, black);
   background: light-dark(
     color-mix(in oklab, var(--tb-accent) 70%, black),
     color-mix(in oklab, var(--tb-accent) 62%, white)

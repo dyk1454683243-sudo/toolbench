@@ -766,7 +766,7 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
-That chunk now measures 19,454 bytes against a 20,500 byte ceiling, so the next thing that costs real
+That chunk now measures 19,837 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
 table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
 bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
