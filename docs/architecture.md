@@ -734,6 +734,7 @@ production build:
 * changing an input marks the result stale without re-running, and Run clears it;
 * a sample fills the form, sets several inputs at once, leaves the ones it does not name alone, keeps
   focus on the button that was pressed, and draws no row on a card;
+* Run attention is a fill change, not a ring, so it cannot be mistaken for `:focus-visible`;
 * all three modes, including two tools in one article with different threading;
 * a tool that spins forever is killed by the timeout, the page stays responsive, and the next run gets a
   fresh worker;
@@ -802,6 +803,7 @@ is here because the guards look arbitrary without it.
 | `chainFrom` used the module constant instead of the injected version | Migration chains silently did nothing | Migration tests inject synthetic versions and assert the steps ran, in order |
 | A sample could push a tool past its own `maxLength` | The field was declared on text inputs and enforced nowhere. It reaches the browser as the `maxlength` attribute, which constrains typing and nothing else, and filling a control from a sample assigns the value directly and walks straight past it, so the tool would have run on more characters than it declared it accepts | `validate.ts` rejects an over-long sample string, for the same reason it rejects an out-of-range sample number. A reader's typing still clamps: static data an author wrote can be a build error, a keystroke has nowhere else to go |
 | The additive-migration check accepted a step that rewrote an existing field | The probe fed each step a two-key manifest, so a step quietly rewriting anything outside those two keys still looked like the identity function. Confirmed by mutating the `2 → 3` step to rewrite `help`, which the old probe passed | The probe passes a whole manifest, stamped with the version of the step under test, and compares the entire key set. An allowlist rather than a denylist: asserting one key name was absent let a step inventing a misspelling of it through |
+| Run's stale-result cue looked like a focus ring | After a sample click the pressed pill kept focus and Run wore a soft ring hugging its edge, the same family of cue as `:focus-visible`. A keyboard reader could take the halo as "Run is where my keyboard is" and press Enter, which would re-fire the pill | A hotter fill derived from `--tb-accent`, not an outline or box-shadow. Browser test asserts the fill changes, that attention draws no ring, and that `:focus-visible` is still a 2px outline when both states are on |
 
 ## 15. Limitations
 

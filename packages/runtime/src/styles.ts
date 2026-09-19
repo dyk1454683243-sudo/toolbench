@@ -121,10 +121,18 @@ export const STYLES = /* css */ `
   cursor: pointer;
 }
 .tb-run[disabled] { opacity: 0.5; cursor: default; }
-/* Set while a result is stale, so the button that resolves it is the thing that draws the eye. */
-.tb-run[data-attention] { outline: 2px solid var(--tb-accent); outline-offset: 2px; }
-.tb-run[data-attention] { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--tb-accent) 28%, transparent); }
-@media (prefers-reduced-motion: reduce) { .tb-run[data-attention] { box-shadow: none; text-decoration: underline; } }
+/* Set while a result is stale, so the button that resolves it is the thing that draws the eye.
+   A ring is the :focus-visible vocabulary on this same button. After a sample click the pill
+   keeps focus and Run asks to be pressed, so two rings on screen read as two foci. A hotter
+   fill is a different language, and it is paint, so prefers-reduced-motion still sees it.
+   ⚠️ Do not set outline or box-shadow here. Equal specificity would hide :focus-visible, and
+   a halo is the same family as the focus ring regardless of how it is drawn. */
+.tb-run[data-attention] {
+  background: light-dark(
+    color-mix(in oklab, var(--tb-accent) 70%, black),
+    color-mix(in oklab, var(--tb-accent) 62%, white)
+  );
+}
 
 /* Quieter than the filled accent of .tb-run on purpose: a sample fills the form, it does not run the
    tool. No margin: the .tb-body grid already spaces its children. */

@@ -447,6 +447,105 @@ describe("sample inputs — contract version 3", () => {
 		await page.close();
 	});
 
+	it("styles Run attention as a fill, not a focus ring", async () => {
+		/*
+		 * data-attention means "press this next". :focus-visible means "the keyboard is here".
+		 * They used to share a ring, so after a sample click a keyboard reader could take Run's
+		 * halo as focus and press Enter, which would re-fire the pill. The fill is the cue, and
+		 * it is paint, so prefers-reduced-motion still sees it. The focus outline is unchanged.
+		 */
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.locator("#host >> .tb-run").waitFor();
+
+		const readRun = () =>
+			page.evaluate(() => {
+				const run = document.querySelector("#host")?.shadowRoot?.querySelector(".tb-run");
+				if (!run) return null;
+				const cs = getComputedStyle(run);
+				return {
+					attention: run.hasAttribute("data-attention"),
+					background: cs.backgroundColor,
+					outlineStyle: cs.outlineStyle,
+					outlineWidth: cs.outlineWidth,
+					outlineOffset: cs.outlineOffset,
+					boxShadow: cs.boxShadow,
+					focusVisible: run.matches(":focus-visible"),
+				};
+			});
+
+		const colourDistance = (a: string, b: string) => {
+			const rgb = (c: string) => (c.match(/\d+(\.\d+)?/g) ?? []).slice(0, 3).map(Number);
+			const A = rgb(a);
+			const B = rgb(b);
+			return Math.hypot((A[0] ?? 0) - (B[0] ?? 0), (A[1] ?? 0) - (B[1] ?? 0), (A[2] ?? 0) - (B[2] ?? 0));
+		};
+
+		const wearsRing = (cue: NonNullable<Awaited<ReturnType<typeof readRun>>>) => {
+			const outline = cue.outlineStyle !== "none" && Number.parseFloat(cue.outlineWidth) > 0;
+			return outline || cue.boxShadow !== "none";
+		};
+
+		const assertFillNotRing = (
+			idle: NonNullable<Awaited<ReturnType<typeof readRun>>>,
+			attention: NonNullable<Awaited<ReturnType<typeof readRun>>>,
+			label: string,
+		) => {
+			assert.equal(attention.attention, true, `${label}: data-attention is set`);
+			assert.ok(
+				!wearsRing(attention),
+				`${label}: attention must not draw a ring (outline=${attention.outlineStyle} ${attention.outlineWidth}, shadow=${attention.boxShadow})`,
+			);
+			assert.ok(
+				colourDistance(idle.background, attention.background) > 20,
+				`${label}: attention must be a noticeable fill change (${idle.background} -> ${attention.background})`,
+			);
+		};
+
+		for (const theme of ["light", "dark"] as const) {
+			await page.locator(`.theme-switch button[data-mode="${theme}"]`).click();
+
+			await page.locator("#host >> .tb-run").click();
+			await page.locator("#host >> .tb-output > *").first().waitFor({ timeout: 15_000 });
+			const idle = await readRun();
+			assert.ok(idle, `${theme}: Run exists after a run`);
+			assert.equal(idle.attention, false, `${theme}: a fresh result is not asking to be pressed`);
+
+			// Last sample, so the next Tab lands on Run with both states on one button.
+			await page.locator('#host >> .tb-sample:text-is("Not a number")').click();
+			const attention = await readRun();
+			assert.ok(attention, `${theme}: Run exists after the sample`);
+			assertFillNotRing(idle, attention, theme);
+
+			await page.keyboard.press("Tab");
+			const both = await readRun();
+			assert.ok(both, `${theme}: Run exists when focused`);
+			assert.equal(both.focusVisible, true, `${theme}: Tab must put :focus-visible on Run`);
+			assert.equal(both.attention, true, `${theme}: attention stays on while focused`);
+			assert.equal(both.outlineStyle, "solid", `${theme}: :focus-visible is still a solid outline`);
+			assert.equal(both.outlineWidth, "2px", `${theme}: :focus-visible width is unchanged`);
+			assert.equal(both.outlineOffset, "2px", `${theme}: :focus-visible offset is unchanged`);
+			assert.ok(
+				colourDistance(idle.background, both.background) > 20,
+				`${theme}: the fill remains when the focus ring is also on`,
+			);
+		}
+
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await page.locator('.theme-switch button[data-mode="light"]').click();
+		await page.locator("#host >> .tb-run").click();
+		await page.locator("#host >> .tb-output > *").first().waitFor({ timeout: 15_000 });
+		const idleReduced = await readRun();
+		assert.ok(idleReduced, "reduced-motion: Run exists");
+		await page.locator('#host >> .tb-sample:text-is("Two clusters")').click();
+		const attentionReduced = await readRun();
+		assert.ok(attentionReduced, "reduced-motion: Run exists after the sample");
+		assertFillNotRing(idleReduced, attentionReduced, "prefers-reduced-motion");
+
+		await page.close();
+	});
+
 	it("names the row from its visible label and works from the keyboard", async () => {
 		const page = await browser.newPage();
 		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
