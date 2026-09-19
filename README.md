@@ -453,6 +453,7 @@ execute with no build step. Any bundler for the host site; the examples use Vite
 ```sh
 pnpm install
 pnpm check          # typecheck, unit tests, every tool's fixtures
+pnpm new-tool <id>  # scaffold tools/<id>/ (four files, already green)
 pnpm bench          # the bench on http://localhost:5180
 pnpm test:bench     # the same bench, driven by Chrome
 ```

@@ -21,6 +21,7 @@ execute in a plain `node --test`. That floor is worth it.
 | Command | When |
 |---|---|
 | `pnpm check` | Constantly. Typecheck plus every Node test, about a second |
+| `pnpm new-tool <id>` | Scaffolds `tools/<id>/` with the four files, already green |
 | `pnpm bench` | Whenever you touch the runtime. Look at the thing |
 | `pnpm bench:build && pnpm size` | Before a PR, if `packages/runtime` grew |
 | `pnpm test:bench` | Before a PR. Browser tests, against the **built** bundle |
@@ -39,7 +40,7 @@ Read [docs/architecture.md](docs/architecture.md) first. The short version:
 | New result kind | `packages/sdk/src/types.ts` | A renderer, a migration, a version bump. See [versioning.md](docs/versioning.md) |
 | New input type | `types.ts` + `validate.ts` + `element.ts` | Label, description target, keyboard behaviour, a version bump |
 | Rendering change | `packages/runtime/src/render/` | A browser test |
-| A new tool | `tools/<id>/` | See [authoring-a-tool.md](docs/authoring-a-tool.md) |
+| A new tool | `tools/<id>/` | `pnpm new-tool <id>`, then [authoring-a-tool.md](docs/authoring-a-tool.md) |
 | Validation rule | `packages/sdk/src/validate.ts` | A unit test, and a row in the architecture doc's invariants table |
 
 ## What will get pushed back on
@@ -91,6 +92,9 @@ later.
 Tools in this repository exist to exercise the runtime, not to be a collection. Two ship today:
 `percentiles` covers a pure main-thread tool returning a group of fields and a table; `queue-explorer`
 covers a worker-mode tool with progress, a timeout and a chart.
+
+Start with `pnpm new-tool <id>`, then replace the starter function. The scaffold exists so the first
+two minutes are not copying boilerplate. It does not change what a tool in this repository has to cover.
 
 A new tool in this repo needs to cover something neither of those does: a new output kind, a failure mode
 the bench cannot currently produce, a different input shape. A good tool that covers the same ground

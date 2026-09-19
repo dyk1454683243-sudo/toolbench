@@ -169,6 +169,9 @@ toolbench/
 │   ├── bench.test.ts               the runtime driven by Chrome against the built bench
 │   ├── fixtures/stress/            a tool that misbehaves on purpose
 │   └── src/                        registry, boot, worker entry, page scripts
+├── scripts/
+│   ├── new-tool.mjs                scaffolds the four files under tools/<id>
+│   └── size-check.mjs              transfer budgets for the built bench
 ├── docs/                           this file, authoring, versioning
 └── .github/workflows/ci.yml        typecheck, tests, build, browser tests
 ```

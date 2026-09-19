@@ -1,0 +1,17 @@
+[
+  {
+    "name": "counts the default input",
+    "input": { "value": "hello" },
+    "expect": {
+      "kind": "fields",
+      "fields": [
+        { "label": "Characters", "value": "5", "note": "Unicode code points, not UTF-16 units" }
+      ]
+    }
+  },
+  {
+    "name": "empty input is an error, not a zero",
+    "input": { "value": "" },
+    "expect": { "kind": "error", "message": "Nothing to measure. Type some text.", "input": "value" }
+  }
+]
