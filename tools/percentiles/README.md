@@ -28,6 +28,8 @@ the quiet ones. If you take one thing from this tool, take that.
 
 ## Notes
 
-- Separators can be spaces, commas, semicolons or newlines. Units are yours; the tool does not care.
+- Separators can be spaces, commas, semicolons or newlines. A comma sitting between digits with no
+  space after it is a thousands grouping (`1,204`) and is refused. Units are yours; the tool does
+  not care.
 - A non-numeric token is reported at the character where it starts.
 - The mean is shown for contrast only. It is not a percentile and does not behave like one.
