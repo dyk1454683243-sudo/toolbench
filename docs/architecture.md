@@ -740,7 +740,7 @@ Five layers. Each catches something the others structurally cannot.
 | `packages/runtime/src/*.test.ts` | Node | Coerce and the partial merge used by typing, samples, and the host `values` setter: clamp, refuse, truncate, unknown ids | 9 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
+| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 38 |
 
 `pnpm coverage` runs the Node rows of that table with Node's built-in test coverage (the same
 collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not
@@ -785,9 +785,9 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 19.7 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, and 0.3 KB with the host `values`/`run()` API |
+| Runtime plus the bench's own wiring | 20.2 KB$2 | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, and 0.6 KB with the host `values` and `run()` API |
 | Stylesheet | 0.9 KB | |
-| Worker entry | 2.9 KB | Only on pages with a worker-mode tool, and only after activation |
+| Worker entry | 3.0 KB$2 | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
 | `queue-explorer` chunk | 1.2 KB | |
 | A page with no tool | 0 bytes | Nothing is imported |
@@ -797,16 +797,16 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
-<<<<<<< HEAD
-That chunk now measures 19,662 bytes against a 20,500 byte ceiling, so the next thing that costs real
-=======
-That chunk now measures 19,739 bytes against a 20,500 byte ceiling, so the next thing that costs real
->>>>>>> 2a48b2b (docs: quote the measured boot size after values and run())
+That chunk now measures 20,229 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
-table with it, or takes the chart split above. The `values` setter and `run()` cost 285 gzipped bytes
-and stayed under the existing ceiling. The ceiling was 19,500 until the richer-card work left 46
+table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
 bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
 rather than only here.
+
+The host `values` and `run()` API cost 567 of those bytes, measured against `main` after the bench
+fixtures were split out, which leaves 271 bytes free. That is not much, and it is worth knowing which
+way the next spend goes: splitting the chart renderer is the lever with real room behind it, and the
+fixture split is already spent.
 
 **What the figure deliberately excludes.** A test instrument that no consumer ships does not belong in a
 number a consumer reads, so two of them are split into their own chunks with their own budget lines: the

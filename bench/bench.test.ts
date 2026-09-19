@@ -672,8 +672,41 @@ describe("host values and run — runtime API", () => {
 	 */
 	type HostApi = HTMLElement & {
 		values: Record<string, string | number | boolean>;
-		run: () => Promise<void>;
+		run: (options?: { focus?: boolean }) => Promise<void>;
 	};
+
+	/*
+	 * Focus follows the person who acted. A reader pressing Run is asking to be taken to the answer; a page
+	 * calling run() on load is not, and moving focus there drops the reader out of whatever they were doing.
+	 * Asserted in both directions, because the default is the one a host gets by accident.
+	 */
+	it("leaves focus alone when the host runs it, and moves it only when asked", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const quiet = await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot as ShadowRoot;
+			(root.querySelector(".tb-textarea") as HTMLTextAreaElement).focus();
+			const before = root.activeElement?.className ?? "";
+			await host.run();
+			return { before, after: root.activeElement?.className ?? "", drawn: (root.querySelector(".tb-output")?.children.length ?? 0) > 0 };
+		});
+		assert.ok(quiet.drawn, "the host's run must still produce a result");
+		assert.equal(quiet.after, quiet.before, `run() must not move focus: ${quiet.before} -> ${quiet.after}`);
+
+		const asked = await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot as ShadowRoot;
+			(root.querySelector(".tb-textarea") as HTMLTextAreaElement).focus();
+			await host.run({ focus: true });
+			return root.activeElement?.className ?? "";
+		});
+		assert.match(asked, /tb-output/, "run({ focus: true }) is how a host opts into being taken to the result");
+		await page.close();
+	});
 
 	it("applies a partial set and does not run the tool", async () => {
 		const page = await browser.newPage();

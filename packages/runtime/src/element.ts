@@ -153,12 +153,18 @@ export class ToolHost extends HTMLElement {
 	 *
 	 * Waits for the manifest, activates if the form has not opened yet, then runs. So
 	 * `host.values = …; host.run()` works on a card nobody has clicked.
+	 *
+	 * ⚠️ Does NOT move focus, unlike the reader pressing Run. Focus follows the person who acted, and here
+	 * the person who acted is the page, not the reader: a host running a tool on load would otherwise yank
+	 * a reader out of whatever they were doing and drop them on a result they did not ask for. Pass
+	 * `{ focus: true }` when the call is the direct consequence of something the reader did, such as a
+	 * button the page itself renders.
 	 */
-	async run(): Promise<void> {
+	async run(options: { focus?: boolean } = {}): Promise<void> {
 		await this.#ready;
 		if (!this.#manifest) return;
 		await this.#activate();
-		await this.#run({ focusResult: true });
+		await this.#run({ focusResult: options.focus === true });
 	}
 
 	get mode(): Mode {
