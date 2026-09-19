@@ -163,9 +163,10 @@ toolbench/
 │   ├── percentiles/                pure, main thread, group of fields and table
 │   └── queue-explorer/             pure, worker, group of series and fields, plus convergence tests
 ├── bench/
-│   ├── index.html                  card mode, theming, failure modes
+│   ├── index.html                  card mode, theming
 │   ├── tool.html                   page mode
 │   ├── article.html                embed mode, two tools in prose
+│   ├── failure.html                stress fixture, kept off the front page
 │   ├── bench.test.ts               the runtime driven by Chrome against the built bench
 │   ├── fixtures/stress/            a tool that misbehaves on purpose
 │   └── src/                        registry, boot, worker entry, page scripts
@@ -173,7 +174,7 @@ toolbench/
 │   ├── new-tool.mjs                scaffolds the four files under tools/<id>
 │   └── size-check.mjs              transfer budgets for the built bench
 ├── docs/                           this file, authoring, versioning
-└── .github/workflows/ci.yml        typecheck, tests, build, browser tests
+└── .github/workflows/              tests, build, Pages deploy, release
 ```
 
 ## 5. The contract
@@ -704,20 +705,28 @@ build: {
 * **`worker.rollupOptions` needs the same treatment**, separately, because none of `build.rollupOptions`
   applies to the worker's build. Skipping it leaves the worker's copies anonymous, which is how a
   duplicate copy of every tool went unnoticed for a while.
+* **`base` must be `/toolbench/` on the Pages build.** A project Pages site is not at the origin root,
+  and without the prefix the HTML loads while every `/assets/...` request 404s. Local `pnpm bench`
+  keeps `/` unless `BENCH_BASE` is set. In-page nav is relative (`./tool.html`) for the same reason.
 
 ### 11.4 Artifacts
 
 | Command | Output |
 |---|---|
 | `pnpm build` | `packages/*/dist`: ESM plus `.d.ts` and source maps. No bundling; consumers bundle. |
-| `pnpm bench:build` | `bench/dist`: three HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk. Per-tool chunks are emitted twice, once for the worker pass, which §13 explains. |
+| `pnpm bench:build` | `bench/dist`: four HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk. Per-tool chunks are emitted twice, once for the worker pass, which §13 explains. Local builds keep Vite `base` at `/`. The Pages deploy sets `BENCH_BASE=/toolbench/` so assets resolve under https://eknowledger.github.io/toolbench/. |
 
 ### 11.5 CI
 
-`.github/workflows/ci.yml`, on push to `main` and on every pull request: install with a frozen
-lockfile, typecheck, test, build, build the bench, install Chromium, run the browser tests. The step
-that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current SDK and
-runtime. That is the mechanism behind the compatibility promise, not a nicety.
+Four workflows, split so each badge answers one question:
+
+* `tests.yml`: typecheck and every Node-runnable test.
+* `build.yml`: packages, the bench, transfer budgets, browser tests.
+* `pages.yml`: builds the bench with `BENCH_BASE=/toolbench/` and, on `main`, publishes it to GitHub Pages. Enabling Pages (Settings → Pages → Source: GitHub Actions) is a maintainer click; the workflow is already in the tree.
+* `release.yml`: version PRs and npm publish, after a human at both gates.
+
+The step that matters most is still `pnpm test`, because it runs **every** tool's fixtures against the
+current SDK and runtime. That is the mechanism behind the compatibility promise, not a nicety.
 
 ## 12. Testing strategy
 

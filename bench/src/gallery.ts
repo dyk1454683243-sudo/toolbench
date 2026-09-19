@@ -1,26 +1,33 @@
 import "./boot.ts";
-import { source, } from "./boot.ts";
-import { toolIds } from "./registry.ts";
+import { source } from "./boot.ts";
+import { exampleToolIds, toolSourceDir } from "./registry.ts";
+import { appendSource } from "./source.ts";
 import { installThemeControl } from "./theme.ts";
 
 installThemeControl();
 
 /**
- * Builds a card per tool, twice — once plain, once inside a themed container.
+ * Builds a card per example tool, twice: once plain, once inside a themed container.
  *
  * Written with `document.createElement` rather than a template so it is obvious that the host does
- * nothing but set two attributes.
+ * nothing but set two attributes. Bench fixtures stay off this grid: a first visitor should not
+ * meet a tool whose job is to time out.
  */
 const manifests = await source.list();
 
 for (const [containerId, mode] of [["cards", "card"], ["themed", "card"]] as const) {
 	const container = document.getElementById(containerId);
 	if (!container) continue;
-	for (const id of toolIds) {
+	for (const id of exampleToolIds) {
+		const slot = document.createElement("div");
+		slot.className = "card-slot";
 		const host = document.createElement("tool-host");
 		host.setAttribute("tool", id);
 		host.setAttribute("mode", mode);
-		container.append(host);
+		slot.append(host);
+		container.append(slot);
+		const dir = toolSourceDir[id];
+		if (dir) appendSource(host, dir);
 	}
 }
 

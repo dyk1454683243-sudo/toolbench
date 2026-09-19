@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Toolbench — failure modes</title>
+	<link rel="stylesheet" href="/src/bench.css" />
+</head>
+<body>
+	<div class="wrap">
+		<header class="top">
+			<h1>Failure modes</h1>
+			<nav class="modes">
+				<a href="./index.html">card</a>
+				<a href="./tool.html?id=percentiles">page</a>
+				<a href="./article.html">in an article</a>
+			</nav>
+		</header>
+		<p class="lead">
+			This page is not a display mode. It is a bench fixture that times out and crashes on purpose,
+			kept off the front page so a first visit is not a deliberate error a visitor cannot interpret.
+		</p>
+
+		<h2>What failure looks like</h2>
+		<p class="note">
+			<strong>Intentional:</strong> every option below except "Work normally" is a failure path the
+			runtime has to render. <strong>Spin forever</strong> ignores its abort signal, so only the
+			worker timeout can stop it (about 1.5 seconds), and the page stays responsive. That is what
+			worker mode buys. <strong>Throw</strong> is a bug in the tool, which reads differently from
+			<strong>reject the input</strong>, which is the tool working correctly.
+		</p>
+		<tool-host tool="stress" mode="page"></tool-host>
+		<p class="source" data-tool="stress"><a href="https://github.com/eknowledger/toolbench/tree/main/bench/fixtures/stress/" rel="noopener">Source: bench/fixtures/stress/</a></p>
+
+		<h2>A tool that does not exist</h2>
+		<p class="note">A host will get this wrong eventually, so it has to fail legibly.</p>
+		<tool-host tool="not-a-real-tool" mode="card"></tool-host>
+
+		<p class="footnote">
+			Back to the <a href="./index.html">card gallery</a>. The fixture lives under
+			<code>bench/fixtures/</code> rather than <code>tools/</code> because it is not an example of a
+			good tool.
+		</p>
+	</div>
+	<script type="module" src="/src/boot.ts"></script>
+</body>
+</html>

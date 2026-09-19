@@ -1,5 +1,5 @@
 /**
- * One place that wires the runtime up, imported by all three pages.
+ * One place that wires the runtime up, imported by every bench page.
  *
  * This is the entire integration surface for a host site: a source, a worker factory, and a function
  * that turns a tool id into a URL. Everything else is `<tool-host>` in the markup.
@@ -12,6 +12,14 @@ installThemeControl();
 
 export const source = new RegistrySource(registry);
 
+/**
+ * Vite's `base`, always with a trailing slash. `/` locally, `/toolbench/` on Pages.
+ * Origin-absolute `/tool.html` would 404 on a project Pages path.
+ */
+export function toolPageUrl(id: string): string {
+	return `${import.meta.env.BASE_URL}tool.html?id=${encodeURIComponent(id)}`;
+}
+
 defineToolHost({
 	source,
 	/*
@@ -20,5 +28,5 @@ defineToolHost({
 	 * a console warning, which is a slower tool rather than a broken page.
 	 */
 	workerFactory: () => new Worker(new URL("./tool.worker.ts", import.meta.url), { type: "module" }),
-	pageUrl: (id) => `/tool.html?id=${encodeURIComponent(id)}`,
+	pageUrl: toolPageUrl,
 });

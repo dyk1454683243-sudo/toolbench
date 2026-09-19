@@ -2,6 +2,22 @@ import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
 /**
+ * Project Pages is served from https://eknowledger.github.io/toolbench/, so the
+ * production deploy must prefix every asset and in-page route with `/toolbench/`.
+ * Without that prefix the HTML loads and every `/assets/...` request 404s.
+ *
+ * Local `pnpm bench` and `pnpm bench:build` keep `/`, so http://localhost:5180
+ * and the preview on :4173 still work. Override with `BENCH_BASE=/toolbench/`
+ * to preview the Pages layout: the preview is then at
+ * http://localhost:4173/toolbench/.
+ */
+function benchBase(): string {
+	const raw = process.env.BENCH_BASE;
+	if (raw === undefined || raw === "") return "/";
+	return raw.endsWith("/") ? raw : `${raw}/`;
+}
+
+/**
  * The bench is a plain Vite app on purpose. No framework, no meta-framework — if the runtime needs
  * one, it is not "drop it into any page" and the design has failed.
  *
@@ -89,6 +105,7 @@ function seedCards(): Plugin {
 }
 
 export default defineConfig({
+	base: benchBase(),
 	plugins: [seedCards()],
 	/*
 	 * ⚠️ `worker.format` defaults to "iife", which cannot code-split — so a worker that dynamically
@@ -121,6 +138,7 @@ export default defineConfig({
 				index: resolve(import.meta.dirname, "index.html"),
 				tool: resolve(import.meta.dirname, "tool.html"),
 				article: resolve(import.meta.dirname, "article.html"),
+				failure: resolve(import.meta.dirname, "failure.html"),
 			},
 		},
 	},

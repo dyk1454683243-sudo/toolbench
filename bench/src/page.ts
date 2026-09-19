@@ -1,13 +1,14 @@
 import "./boot.ts";
-import { source } from "./boot.ts";
-import { toolIds } from "./registry.ts";
+import { source, toolPageUrl } from "./boot.ts";
+import { toolIds, toolSourceDir } from "./registry.ts";
+import { appendSource } from "./source.ts";
 import { installThemeControl } from "./theme.ts";
 
 installThemeControl();
 
 /**
  * The full-page mode. A real host would generate one route per tool; the bench uses a query parameter
- * so the whole thing stays three static files.
+ * so the whole thing stays a handful of static files.
  */
 const params = new URLSearchParams(location.search);
 const requested = params.get("id") ?? toolIds[0] ?? "";
@@ -15,7 +16,11 @@ const manifests = await source.list();
 const manifest = manifests.find((m) => m.id === requested) ?? manifests[0];
 
 const host = document.getElementById("host");
-if (host && manifest) host.setAttribute("tool", manifest.id);
+if (host && manifest) {
+	host.setAttribute("tool", manifest.id);
+	const dir = toolSourceDir[manifest.id];
+	if (dir) appendSource(host, dir);
+}
 
 if (manifest) {
 	document.title = `${manifest.name} — Toolbench`;
@@ -53,7 +58,7 @@ if (manifest) {
 const switcher = document.getElementById("switcher");
 for (const id of toolIds) {
 	const link = document.createElement("a");
-	link.href = `/tool.html?id=${encodeURIComponent(id)}`;
+	link.href = toolPageUrl(id);
 	link.textContent = id;
 	if (id === manifest?.id) link.setAttribute("aria-current", "page");
 	switcher?.append(link);
