@@ -1240,6 +1240,8 @@ describe("host code highlight hook", () => {
 		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
 		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
 		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
 		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
 
 		const painted = await page.evaluate(() => {
@@ -1282,6 +1284,8 @@ describe("host code highlight hook", () => {
 		await page.goto(`${BASE}/index.html?plain-code`, { waitUntil: "load" });
 		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
 		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
 		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
 
 		const plain = await page.evaluate(() => {

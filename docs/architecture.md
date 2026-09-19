@@ -789,7 +789,7 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 20.2 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, and 0.6 KB with the host `values` and `run()` API |
+| Runtime plus the bench's own wiring | 20.2 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, 0.6 KB with the host `values` and `run()` API, and PENDING KB with the host `highlight` hook |
 | Stylesheet | 0.9 KB | |
 | Worker entry | 3.0 KB | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
@@ -803,7 +803,9 @@ most tools never draw one.
 
 That chunk now measures 20,229 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
-table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
+table with it, or takes the chart split above. The `highlight` hook cost 368 gzipped bytes and stayed
+under the existing ceiling. The demo highlighter is a separate `bench-highlight` chunk (551 bytes),
+not in `boot`. The ceiling was 19,500 until the richer-card work left 46
 bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
 rather than only here.
 
