@@ -377,6 +377,8 @@ export class ToolHost extends HTMLElement {
 
 		if (!this.#activated || this.#loading) {
 			// The facade: static, and clickable only in card mode.
+			// One string for the visible hint and the accessible name, so they cannot drift.
+			const hint = this.#seed ? "Try it" : "Open this tool";
 			const preview = el(
 				"div",
 				{ class: "tb-body" },
@@ -388,11 +390,16 @@ export class ToolHost extends HTMLElement {
 							...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
 						})
 					: null,
-				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : this.#seed ? "Try it" : "Open this tool"),
+				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : hint),
 			);
 			if (compact && !this.#loading) {
 				const button = el("button", { class: "tb-facade", type: "button" });
-				button.setAttribute("aria-label", `Open ${manifest.name}`);
+				/*
+				 * ⚠️ "Open ${name}" failed WCAG 2.5.3. The button's visible affordance is the hint,
+				 * so a speech-input user saying "click Try it" matched nothing. Naming it by the
+				 * whole card would announce the blurb and the seed as a paragraph.
+				 */
+				button.setAttribute("aria-label", `${hint}: ${manifest.name}`);
 				button.append(preview);
 				button.addEventListener("click", () => void this.#activate());
 				frame.append(button);

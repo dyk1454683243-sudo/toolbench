@@ -78,7 +78,17 @@ export const STYLES = /* css */ `
 
 .tb-head { padding: 0.875rem 1rem 0; }
 .tb-name { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
-.tb-name a { color: inherit; text-decoration: none; }
+.tb-name a {
+  color: inherit;
+  text-decoration: none;
+  /* WCAG 2.5.8: the text metrics alone are about 20px tall. A little block padding
+     and a 24px floor grow the hit target into the head's existing room. Applies
+     for every mode that uses a title link, not only compact. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 2px;
+}
 .tb-name a:hover, .tb-name a:focus-visible { color: var(--tb-accent); text-decoration: underline; }
 .tb-blurb { margin: 0.25rem 0 0; color: var(--tb-muted); font-size: 0.9rem; }
 
