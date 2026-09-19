@@ -329,6 +329,22 @@ before meeting it for real. Cards show no samples: there is room there for one i
 Added in contract version 3, and
 [docs/authoring-a-tool.md](docs/authoring-a-tool.md#4b-sample-inputs) covers choosing them.
 
+**A host can prefill the form** without putting those examples in the tool, and without reaching into
+the shadow root. `values` fills inputs the way typing does. It does not run the tool. `run()` is
+opt-in:
+
+```ts
+const host = document.querySelector("tool-host");
+host.values = { packet: "80 e0 12 34 …", view: "all" }; // partial; does not run
+host.run();                                            // optional
+```
+
+Unspecified inputs keep their current value. Out-of-range numbers are clamped, an invalid `select`
+falls back to that input's default, and a string longer than `maxLength` is cut: a host is not more
+trustworthy than a reader. An existing result goes stale, the same as typing. This works before the
+form has opened, so a card can be prefilled. A shareable `?in=…` deep link is then a host feature,
+with no further contract change.
+
 ## Result shapes
 
 A tool returns one of a closed set of shapes, so the runtime can draw anything a tool produces and a

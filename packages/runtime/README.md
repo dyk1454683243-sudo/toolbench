@@ -29,6 +29,15 @@ Then use it anywhere:
 <tool-host tool="reverse" mode="embed"></tool-host>
 ```
 
+A host can prefill inputs without reaching into the shadow root. `values` is partial, validated like
+typed input, and does not run the tool. `run()` is opt-in, and both work before the form has opened:
+
+```ts
+const host = document.querySelector("tool-host");
+host.values = { text: "hello" };
+host.run();
+```
+
 ## What you get
 
 * **Three display modes.** A compact card, a full page, and an in-article embed, from one declaration.

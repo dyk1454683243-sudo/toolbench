@@ -319,6 +319,8 @@ opt-in and has to justify itself:
 **`element.ts`** is `<tool-host>`, and it is the only public surface most hosts touch. It owns:
 
 * reading `tool` and `mode` attributes, and the inline seed;
+* a `values` setter and `run()` method, so a host can prefill the form and opt into running without
+  reaching into the shadow root;
 * deciding when to activate (click for a card, intersection for a page or embed);
 * building the form from `manifest.inputs`, including labels, descriptions, bounds and text direction;
 * the state machine: facade, loading, idle, running, result, stale, error;
@@ -758,6 +760,8 @@ production build:
 * a seeded card shows a real result before anything runs;
 * activation does not run the tool, and the status says "press Run";
 * changing an input marks the result stale without re-running, and Run clears it;
+* a host `values` write fills the form without running, clamps like typing, works before a card
+  opens, and `run()` after it produces a result;
 * a sample fills the form, sets several inputs at once, leaves the ones it does not name alone, keeps
   focus on the button that was pressed, and draws no row on a card;
 * Run attention is a fill change, not a ring, so it cannot be mistaken for `:focus-visible`;
