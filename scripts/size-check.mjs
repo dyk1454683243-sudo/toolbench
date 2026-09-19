@@ -85,7 +85,13 @@ const BUDGETS = [
 	 */
 	{ label: "chart renderer", pattern: /^chart-[^/]+\.js$/, budget: 2_500 },
 	{ label: "stylesheet", pattern: /^boot-[^/]+\.css$/, budget: 1_200 },
-	{ label: "worker entry", pattern: /^tool\.worker-[^/]+\.js$/, budget: 4_000 },
+	/*
+	 * Raised from 4_000 to 4_500 in the commit that spent it. The worker imports the same eager
+	 * `tool.json` glob as the page, so two new manifests (regex-explainer, histogram) land in this
+	 * chunk. Tool *code* stays in worker-tool-* copies; this is the registry plus the protocol.
+	 * 4_000 left the chunk 237 bytes over after those manifests, which is not a ceiling.
+	 */
+	{ label: "worker entry", pattern: /^tool\.worker-[^/]+\.js$/, budget: 4_500 },
 	{ label: "tool: percentiles", pattern: /^tool-percentiles-[^/]+\.js$/, budget: 2_000 },
 	{ label: "tool: queue-explorer", pattern: /^tool-queue-explorer-[^/]+\.js$/, budget: 2_000 },
 	/*
