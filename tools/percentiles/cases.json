@@ -104,6 +104,44 @@
     }
   },
   {
+    "name": "a thousands-grouped paste is refused rather than silently split into the wrong measurements",
+    "input": { "values": "1,204 980 1,100 1,340", "method": "nearest" },
+    "expect": {
+      "kind": "error",
+      "message": "\"1,204\" has a comma between digits, which could be a thousands grouping. Write digits only, or put a space after each comma.",
+      "input": "values",
+      "at": 0,
+      "len": 1
+    }
+  },
+  {
+    "name": "a comma between digits with no space is refused even as a two-item list",
+    "input": { "values": "12,14", "method": "nearest" },
+    "expect": {
+      "kind": "error",
+      "message": "\"12,14\" has a comma between digits, which could be a thousands grouping. Write digits only, or put a space after each comma.",
+      "input": "values",
+      "at": 0,
+      "len": 1
+    }
+  },
+  {
+    "name": "a comma with a space after it is still a separator",
+    "input": { "values": "12, 14, 15", "method": "nearest" },
+    "match": "subset",
+    "why": "the grouping-comma refusal must not start rejecting the declared separator 12, 14, 15",
+    "fieldCount": 6,
+    "expect": {
+      "kind": "fields",
+      "fields": [
+        { "label": "count", "value": "3" },
+        { "label": "min", "value": "12" },
+        { "label": "max", "value": "15" },
+        { "label": "mean", "value": "13.7" }
+      ]
+    }
+  },
+  {
     "name": "one measurement is its own every percentile",
     "input": { "values": "42", "method": "linear" },
     "match": "subset",

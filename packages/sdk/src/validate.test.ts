@@ -50,13 +50,13 @@ describe("validateManifest", () => {
 		failsWith((m) => { m.kinds = ["fields"]; }, "kinds", "error");
 	});
 
-	it("rejects duplicate input ids", () => {
+	it("rejects duplicate input ids, naming the second colliding field", () => {
 		failsWith((m) => {
 			m.inputs = [
 				{ id: "a", type: "text", label: "A", default: "" },
 				{ id: "a", type: "text", label: "B", default: "" },
 			];
-		}, "inputs", "unique");
+		}, "inputs[1].id", String.raw`already used by inputs\[0\]`);
 	});
 
 	it("allows several primary inputs, because some questions need more than one number", () => {
@@ -154,7 +154,52 @@ describe("validateManifest", () => {
 				{ label: "Same", input: { value: 1 } },
 				{ label: "Same", input: { value: 2 } },
 			];
-		}, "samples", "unique");
+		}, "samples[1]", String.raw`already used by samples\[0\]`);
+	});
+
+	it("points a later duplicate label at the colliding occurrence, not at the samples key", () => {
+		failsWith((m) => {
+			m.samples = [
+				{ label: "Keep", input: { value: 1 } },
+				{ label: "Other", input: { value: 2 } },
+				{ label: "Keep", input: { value: 3 } },
+			];
+		}, "samples[2]", String.raw`already used by samples\[0\]`);
+	});
+
+	it("rejects two samples with different labels and the same input", () => {
+		failsWith((m) => {
+			m.samples = [
+				{ label: "Low", input: { value: 3 } },
+				{ label: "Also low", input: { value: 3 } },
+			];
+		}, "samples[1].input", String.raw`matches samples\[0\]`);
+	});
+
+	it("treats sample inputs as equal when only their key order differs", () => {
+		failsWith((m) => {
+			m.inputs = [
+				{ id: "value", type: "number", label: "Value", default: 1, min: 0, max: 10 },
+				{ id: "note", type: "text", label: "Note", default: "" },
+			];
+			m.samples = [
+				{ label: "First", input: { value: 4, note: "x" } },
+				{ label: "Second", input: { note: "x", value: 4 } },
+			];
+		}, "samples[1].input", String.raw`matches samples\[0\]`);
+	});
+
+	it("accepts two samples that share a value on one input and differ on another", () => {
+		const m = good() as Record<string, unknown>;
+		m.inputs = [
+			{ id: "value", type: "number", label: "Value", default: 1, min: 0, max: 10 },
+			{ id: "note", type: "text", label: "Note", default: "" },
+		];
+		m.samples = [
+			{ label: "Just the number", input: { value: 7 } },
+			{ label: "Number and a note", input: { value: 7, note: "x" } },
+		];
+		assert.equal(validateManifest(m).samples?.length, 2);
 	});
 
 	it("rejects a sample select value that is not one of the options", () => {
@@ -187,6 +232,19 @@ describe("validateManifest", () => {
 			m.inputs = [{ id: "pattern", type: "text", label: "Pattern", default: "", maxLength: 8 }];
 			m.samples = [{ label: "Too long", input: { pattern: "123456789" } }];
 		}, "samples[0].input.pattern", "maxLength");
+	});
+
+	/*
+	 * Deliberate: the same over-long string as a `default` still loads. Closing that gap would
+	 * reject manifests contract v3 still accepts. maxLength bounds typing and samples, not default.
+	 * See docs/authoring-a-tool.md and issue #41.
+	 */
+	it("accepts a default longer than maxLength; that bound is for typing and samples, not default", () => {
+		const manifest = validateManifest({
+			...good(),
+			inputs: [{ id: "pattern", type: "text", label: "Pattern", default: "123456789", maxLength: 8 }],
+		});
+		assert.equal(manifest.inputs[0]?.default, "123456789");
 	});
 
 	it("rejects a sample value that is not a boolean for a toggle", () => {

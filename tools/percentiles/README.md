@@ -29,5 +29,36 @@ the quiet ones. If you take one thing from this tool, take that.
 ## Notes
 
 - Separators can be spaces, commas, semicolons or newlines. Units are yours; the tool does not care.
+- A comma sitting between digits with no space after it is refused. `1,204` is one number to a reader
+  pasting from a dashboard and two to a reader pasting a list, and `120,140,180` is three latencies or one
+  hundred and twenty million depending on who typed it. The tool could pick either rule, and refusing is the
+  one that cannot produce a confident wrong answer: a percentile people quote in a meeting is the wrong place
+  to guess. Write `1204`, or put a space after each comma.
+
+## What you can paste
+
+Every row below is real behaviour, not an illustration. To enter one thousand two hundred four, write
+`1204`.
+
+| Input | Read as |
+|---|---|
+| `1204 980 1100 1340` | four measurements |
+| `1204, 980, 1100, 1340` | four measurements, comma followed by a space |
+| `12 14 15` | three |
+| `12, 14, 15` | three |
+| `12;14;15` | three, semicolons separate too |
+| one number per line | three, newlines separate |
+| `12.5 14.25 16.75` | three, a full stop is a decimal point |
+| `1,204 980 1,100 1,340` | **refused**, comma between digits |
+| `12,14,15` | **refused**, same rule, even though it cannot be a grouping |
+| `120,140,180` | **refused**, and this is the case the rule exists for |
+
+The rule in one line: **a comma with a space after it separates measurements, a comma wedged between two
+digits is refused.**
+
+- ⚠️ The same collision exists for a decimal comma and for a full stop used as a grouping separator, and
+  neither is handled: `1.204` is read as 1.204, which is what a reader writing 1204 in a locale that groups
+  with full stops did not mean. The tool cannot know the locale, and unlike the comma case there is no
+  reading that is obviously safe to refuse, since `12.5` must keep working.
 - A non-numeric token is reported at the character where it starts.
 - The mean is shown for contrast only. It is not a percentile and does not behave like one.
