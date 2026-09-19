@@ -561,7 +561,7 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 | A select has two or more options and its default is one of them | `validate.ts` | A control with one choice, or none selected |
 | `kinds` includes `"error"` | `validate.ts` | A tool with no way to reject bad input |
 | Every case's `expect.kind` is declared in `kinds` | `tools/cases.test.ts` | `kinds` drifts into fiction |
-| Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label | `validate.ts` | A button that fills the form with a value the form itself refuses |
+| Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label or the same input values | `validate.ts` | A button that fills the form with a value the form itself refuses, or two buttons that do the same thing |
 | Every declared sample runs without throwing | `tools/cases.test.ts` | The first thing a reader clicks is the first thing to crash |
 | Only a `pure` tool with no assets may be `card: "live"` | `validate.ts` | A landing page card could read files or call the network |
 | `timeoutMs` requires `thread: "worker"` | `validate.ts` | A field that cannot do what it says |
