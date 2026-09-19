@@ -314,6 +314,14 @@ Things the validator will hold you to, and why:
   manifests contract v3 still accepts, which an additive change may not do. A long default still
   loads. Keep it inside `maxLength` yourself if you set both.
 
+  ⚠️ **Why that gap stays open while duplicate sample values are refused**, since the two look like
+  opposite decisions taken in the same breath. A refusal is only worth its cost when the thing refused is
+  never what anybody wanted. Two buttons filling identical values are in that category: there is no tool for
+  which that is the intended behaviour, so refusing it can only catch a copy-paste. An over-long `default` is
+  not: an author may genuinely want the form pre-filled with text the reader is expected to trim, and
+  refusing it would break a manifest whose author chose it deliberately. The test is not whether a rule is
+  tighter, it is whether a correct tool could ever trip it.
+
 ## 4b. Sample inputs
 
 Nobody arrives at a tool knowing what to put into it, and the defaults can only demonstrate one thing.
