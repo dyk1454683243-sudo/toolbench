@@ -46,8 +46,21 @@ export function percentile(sorted: number[], p: number, method: Method): number 
 	return (sorted[lo] as number) * (1 - weight) + (sorted[hi] as number) * weight;
 }
 
+/**
+ * A comma sitting between two digits is a thousands grouping, not a list separator. The tokenizer
+ * splits on commas, so without this check a pasted `1,204 980 1,100 1,340` becomes seven
+ * measurements, min 1 and mean 232.4, and nothing says the input was misread.
+ */
+function groupingComma(text: string): { error: string; at: number } | null {
+	const hit = /[^\s;]*\d,\d[^\s;]*/.exec(text);
+	if (hit === null) return null;
+	return { error: `"${hit[0]}" is not a number`, at: hit.index };
+}
+
 /** Parses forgivingly, but reports the exact character where it gave up. */
 function parse(text: string): { values: number[] } | { error: string; at: number } {
+	const grouped = groupingComma(text);
+	if (grouped !== null) return grouped;
 	const values: number[] = [];
 	const token = /[^\s,;]+/g;
 	let match: RegExpExecArray | null = token.exec(text);
