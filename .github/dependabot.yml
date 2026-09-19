@@ -1,0 +1,27 @@
+# Weekly updates for GitHub Actions and npm devDependencies.
+#
+# release.yml holds id-token: write, so every action it runs is inside the npm
+# publish trust boundary. Workflows pin those actions by commit SHA. Dependabot
+# keeps the SHA and the version comment in step.
+#
+# npm patch and minor updates share one PR. Majors stay separate so they get
+# read. The workspace is configured from the root: that is where pnpm-lock.yaml
+# and pnpm-workspace.yaml live.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-type: "development"
+    groups:
+      npm-patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
