@@ -891,8 +891,14 @@ Known and accepted, with what each costs.
   roughly double the runtime.
 * **The chart is deliberately simple.** No tooltips, no zoom, no time axis. It draws what `Chart`
   describes.
-* **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup.
-  That is milliseconds for tens of tools and would need revisiting at hundreds.
+* **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup,
+  so a malformed tool is a startup error that names the field. Measured 2026-09-19 with
+  `pnpm measure:registry` on Node v24.21.0 (linux x64, Intel Xeon): 500 synthetic current-contract
+  manifests, two inputs each. Three consecutive process runs, 21 timed constructions after 5
+  warmups, had medians of 0.71 ms, 0.98 ms and 0.77 ms (lowest sample 0.47 ms, highest 1.96 ms).
+  Under a millisecond at several hundred tools, so the constructor stays eager. Revisit if a host
+  is in the thousands. The script times `new RegistrySource` only. Generation sits outside the
+  timed region, and so does JSON.parse: a host already has objects when it constructs the source.
 * **The `series` renderer stays in the boot chunk, for now.** A dynamic import of `render/chart.ts` saves
   1,521 bytes gzip against the roughly 3 KB bar issue #12 set, so the complexity is not yet worth it. The
   condition is load bearing: at the time of writing the chunk has 140 bytes of headroom, so this is the lever
