@@ -7,5 +7,10 @@
     "types": ["node"],
     "paths": { "@toolbench/sdk": ["../packages/sdk/src/index.ts"] }
   },
-  "include": ["*/index.ts"]
+  /*
+   * The scaffold's golden template is compiled here too. Nothing else covers `scripts/`, so without
+   * this line the one promise the scaffold makes, that a generated tool is green before it is edited,
+   * is the one thing CI cannot see.
+   */
+  "include": ["*/index.ts", "../scripts/fixtures/new-tool/*/index.ts"]
 }

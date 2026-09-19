@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { checkToolDirectory } from "../packages/sdk/src/fixtures.ts";
+import { SDK_VERSION } from "../packages/sdk/src/version.ts";
 import { filesFor, main, scaffold, titleFromId } from "./new-tool.mjs";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
@@ -48,6 +49,22 @@ describe("filesFor", () => {
 		for (const name of NAMES) {
 			assert.equal(files[name], golden(name), name);
 		}
+	});
+
+	/*
+	 * The template reads SDK_VERSION rather than naming a version, so this cannot drift. What it can do
+	 * is leave the hand-written fixture behind, and the byte comparison above would then fail with a
+	 * one-character diff that reads like a mystery. This says what to do instead.
+	 */
+	it("emits the current contract version, and the fixture is kept in step with it", () => {
+		const emitted = JSON.parse(filesFor("base64")["tool.json"] as string) as { sdk: number };
+		assert.equal(emitted.sdk, SDK_VERSION, "a scaffolded tool declares the contract version the SDK is on");
+		const fixture = JSON.parse(golden("tool.json")) as { sdk: number };
+		assert.equal(
+			fixture.sdk,
+			SDK_VERSION,
+			`the golden fixture still says sdk ${fixture.sdk} while the SDK is on ${SDK_VERSION}. Regenerate it: node scripts/new-tool.mjs base64 --dir <tmp> and copy the four files over scripts/fixtures/new-tool/base64/`,
+		);
 	});
 
 	it("substitutes the id and the sentence-case name, and nothing else that would change the fixtures", () => {
@@ -118,11 +135,23 @@ describe("a generated tool", () => {
 });
 
 describe("main", () => {
-	it("prints usage and exits 1 when the id is missing", () => {
+	/*
+	 * Usage on stderr when the call was wrong, on stdout when help was asked for. The distinction is
+	 * the difference between `pnpm new-tool 2>/dev/null` looking silent-but-fine and looking like what
+	 * it is, a failure.
+	 */
+	it("prints usage to stderr and exits 1 when the id is missing", () => {
 		const { code, stdout, stderr } = capture([]);
 		assert.equal(code, 1);
+		assert.match(stderr, /pnpm new-tool <id>/);
+		assert.equal(stdout, "", "a failure must not write to stdout");
+	});
+
+	it("prints usage to stdout and exits 0 when help is asked for", () => {
+		const { code, stdout, stderr } = capture(["--help"]);
+		assert.equal(code, 0);
 		assert.match(stdout, /pnpm new-tool <id>/);
-		assert.equal(stderr, "");
+		assert.equal(stderr, "", "asking for help is not an error");
 	});
 
 	it("writes under --dir and names the four files", () => {

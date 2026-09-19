@@ -19,6 +19,14 @@
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+/*
+ * ⚠️ Read from the SDK rather than written as a literal here.
+ *
+ * A hardcoded version is the one kind of staleness nothing catches: a manifest declaring an older
+ * contract is SUPPOSED to keep validating, so a template frozen at 3 would keep emitting tools that
+ * silently opt out of everything added since, and no test anywhere would fail.
+ */
+import { SDK_VERSION } from "../packages/sdk/src/version.ts";
 
 /** Same rule the validator applies: a directory name, a URL segment, a registry key. */
 export const ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -46,7 +54,7 @@ export function filesFor(id) {
 	const name = titleFromId(id);
 	return {
 		"tool.json": `{
-  "sdk": 3,
+  "sdk": ${SDK_VERSION},
   "id": ${JSON.stringify(id)},
   "name": ${JSON.stringify(name)},
   "blurb": "A starter tool that counts characters in its input. Replace the function, the fixtures, and this sentence.",
@@ -203,7 +211,9 @@ export function main(argv = process.argv.slice(2), io = process) {
 	try {
 		const { help, id, toolsDir } = parseArgs(argv);
 		if (help || id === undefined) {
-			io.stdout.write(USAGE);
+			// Asking for help is a success and belongs on stdout; being called wrong is a failure, and a
+			// failure written to stdout means `pnpm new-tool 2>/dev/null` looks like it worked.
+			(help ? io.stdout : io.stderr).write(USAGE);
 			return help ? 0 : 1;
 		}
 		const root = scaffold(id, { toolsDir });
