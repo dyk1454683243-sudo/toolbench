@@ -54,11 +54,25 @@ export function percentile(sorted: number[], p: number, method: Method): number 
 function groupingComma(text: string): { error: string; at: number } | null {
 	const hit = /[^\s;]*\d,\d[^\s;]*/.exec(text);
 	if (hit === null) return null;
-	return { error: `"${hit[0]}" is not a number`, at: hit.index };
+	/*
+	 * Says what was found and how to say it instead. "is not a number" was both untrue, since 1,204 is a
+	 * number to every reader, and self-contradicting, since the shared advice told them to separate with
+	 * commas while a comma was the thing being refused.
+	 */
+	return {
+		error: `"${hit[0]}" has a comma between digits, which could be a thousands grouping. Write digits only, or put a space after each comma`,
+		at: hit.index,
+	};
 }
 
 /** Parses forgivingly, but reports the exact character where it gave up. */
 function parse(text: string): { values: number[] } | { error: string; at: number } {
+	/*
+	 * Before the token scan, so the whole text is judged as text. The cost is precedence: an input holding
+	 * both a grouped number and an earlier unparseable token reports the grouping, not the earlier token.
+	 * Both are refusals and the reader fixes both, so the offset being the second problem is the lesser
+	 * evil against scanning twice.
+	 */
 	const grouped = groupingComma(text);
 	if (grouped !== null) return grouped;
 	const values: number[] = [];
@@ -67,7 +81,7 @@ function parse(text: string): { values: number[] } | { error: string; at: number
 	while (match !== null) {
 		const value = Number(match[0]);
 		if (!Number.isFinite(value)) {
-			return { error: `"${match[0]}" is not a number`, at: match.index };
+			return { error: `"${match[0]}" is not a number. Separate measurements with spaces, commas or newlines`, at: match.index };
 		}
 		values.push(value);
 		match = token.exec(text);
@@ -85,7 +99,7 @@ const tool: Tool<Input> = {
 	run({ values, method }) {
 		const parsed = parse(values);
 		if ("error" in parsed) {
-			return { kind: "error", message: `${parsed.error}. Separate measurements with spaces, commas or newlines.`, input: "values", at: parsed.at, len: 1 };
+			return { kind: "error", message: `${parsed.error}.`, input: "values", at: parsed.at, len: 1 };
 		}
 		if (parsed.values.length === 0) {
 			return { kind: "error", message: "No measurements yet — paste some numbers.", input: "values" };

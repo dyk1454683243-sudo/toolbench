@@ -108,7 +108,7 @@
     "input": { "values": "1,204 980 1,100 1,340", "method": "nearest" },
     "expect": {
       "kind": "error",
-      "message": "\"1,204\" is not a number. Separate measurements with spaces, commas or newlines.",
+      "message": "\"1,204\" has a comma between digits, which could be a thousands grouping. Write digits only, or put a space after each comma.",
       "input": "values",
       "at": 0,
       "len": 1
@@ -119,7 +119,7 @@
     "input": { "values": "12,14", "method": "nearest" },
     "expect": {
       "kind": "error",
-      "message": "\"12,14\" is not a number. Separate measurements with spaces, commas or newlines.",
+      "message": "\"12,14\" has a comma between digits, which could be a thousands grouping. Write digits only, or put a space after each comma.",
       "input": "values",
       "at": 0,
       "len": 1
