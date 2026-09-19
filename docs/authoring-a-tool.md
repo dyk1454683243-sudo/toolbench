@@ -396,6 +396,11 @@ did anything at all.
 there would crowd out the result the card exists to show. Samples appear in `page` and `embed` mode only,
 so do not design a tool whose form makes no sense without them.
 
+A host page can still put its own example buttons next to a card, or prefill a deep link, without
+those examples living in the manifest. `<tool-host>` has a `values` setter and a `run()` method for
+that. `values` is partial and does not run the tool. Ship `samples` for examples that belong to the
+tool. Leave page-specific ones to the host.
+
 ### What validation will hold you to
 
 `validateManifest` refuses the manifest, naming the field, when:

@@ -1,0 +1,114 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import type { InputSpec, InputValues } from "@toolbench/sdk";
+import { applyPartialValues, coerce } from "./values.ts";
+
+const numberSpec = {
+	id: "arrivals",
+	type: "number",
+	label: "Arrival rate",
+	default: 800,
+	min: 1,
+	max: 5000,
+} as const satisfies InputSpec;
+
+const selectSpec = {
+	id: "method",
+	type: "select",
+	label: "Definition",
+	default: "nearest",
+	options: [
+		{ value: "nearest", label: "Nearest rank" },
+		{ value: "linear", label: "Linear interpolation" },
+	],
+} as const satisfies InputSpec;
+
+const toggleSpec = {
+	id: "wide",
+	type: "toggle",
+	label: "Wide",
+	default: false,
+} as const satisfies InputSpec;
+
+const textSpec = {
+	id: "text",
+	type: "textarea",
+	label: "Text",
+	default: "hello",
+	maxLength: 8,
+} as const satisfies InputSpec;
+
+const unboundedText = {
+	id: "note",
+	type: "text",
+	label: "Note",
+	default: "",
+} as const satisfies InputSpec;
+
+const inputs: readonly InputSpec[] = [numberSpec, selectSpec, toggleSpec, textSpec];
+
+const current = (): InputValues => ({
+	arrivals: 800,
+	method: "nearest",
+	wide: false,
+	text: "hello",
+});
+
+describe("coerce", () => {
+	it("clamps a number above max and below min", () => {
+		assert.equal(coerce(numberSpec, 99999), 5000);
+		assert.equal(coerce(numberSpec, -10), 1);
+	});
+
+	it("falls back to the default when the number is not finite", () => {
+		assert.equal(coerce(numberSpec, "nope"), 800);
+		assert.equal(coerce(numberSpec, Number.NaN), 800);
+	});
+
+	it("refuses a select value that is not an option", () => {
+		assert.equal(coerce(selectSpec, "bogus"), "nearest");
+		assert.equal(coerce(selectSpec, "linear"), "linear");
+	});
+
+	it("stores a toggle as a boolean", () => {
+		assert.equal(coerce(toggleSpec, true), true);
+		assert.equal(coerce(toggleSpec, 0), false);
+	});
+
+	it("truncates text to maxLength, the same limit the maxlength attribute enforces on typing", () => {
+		assert.equal(coerce(textSpec, "abcdefghij"), "abcdefgh");
+		assert.equal(coerce(unboundedText, "abcdefghij"), "abcdefghij");
+	});
+});
+
+describe("applyPartialValues", () => {
+	it("writes only the keys the caller named, and leaves the rest alone", () => {
+		const next = applyPartialValues(inputs, current(), { method: "linear" });
+		assert.equal(next.method, "linear");
+		assert.equal(next.arrivals, 800);
+		assert.equal(next.text, "hello");
+		assert.equal(next.wide, false);
+	});
+
+	it("ignores unknown ids rather than storing them", () => {
+		const next = applyPartialValues(inputs, current(), { packet: "80 e0", arrivals: 100 });
+		assert.equal(next.arrivals, 100);
+		assert.equal("packet" in next, false, "an unknown key must not land in the map the tool will see");
+	});
+
+	it("clamps and refuses inside the merge, so a host cannot bypass the form", () => {
+		const next = applyPartialValues(inputs, current(), {
+			arrivals: 99999,
+			method: "bogus",
+			text: "abcdefghij",
+		});
+		assert.equal(next.arrivals, 5000);
+		assert.equal(next.method, "nearest");
+		assert.equal(next.text, "abcdefgh");
+	});
+
+	it("is a no-op for an empty partial", () => {
+		const before = current();
+		assert.deepEqual(applyPartialValues(inputs, before, {}), before);
+	});
+});

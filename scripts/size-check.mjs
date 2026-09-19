@@ -123,6 +123,13 @@ if (process.argv.includes("--update")) {
 		 * longer find is a figure nobody checks. Matching the least text that still identifies the row is
 		 * what keeps it working when somebody rewords the label.
 		 */
+		/*
+		 * ⚠️ The badge as well as the table. It is the most-read number in the repository and the only one
+		 * that was not covered here, so it sat at 19.6 KB while the table beside it moved twice. A published
+		 * figure the refresh tool cannot reach is a figure that rots, which is the whole argument for this
+		 * block existing.
+		 */
+		["README.md", /(runtime-)[\d.]+(%20KB%20gzip)/, kb(find("runtime + host wiring")).replace(" KB", "")],
 		["README.md", /(\| Runtime[^|]*\| )[\d.]+ KB/, kb(find("runtime + host wiring"))],
 		["docs/architecture.md", /(\| Runtime[^|]*\| )[\d.]+ KB/, kb(find("runtime + host wiring"))],
 		["README.md", /(\| Worker entry[^|]*\| )[\d.]+ KB/, kb(find("worker entry"))],
@@ -131,7 +138,8 @@ if (process.argv.includes("--update")) {
 	for (const [file, pattern, value] of edits) {
 		const path = join(import.meta.dirname, "..", file);
 		const before = readFileSync(path, "utf8");
-		const after = before.replace(pattern, `$1${value}`);
+		// `$2` is empty for the single-group table patterns and carries the badge suffix for the badge one.
+		const after = before.replace(pattern, `$1${value}$2`);
 		if (after !== before) {
 			const { writeFileSync } = await import("node:fs");
 			writeFileSync(path, after);
