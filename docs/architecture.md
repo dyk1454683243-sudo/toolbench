@@ -826,8 +826,14 @@ Known and accepted, with what each costs.
   already has a highlighter. Bundling one would double the runtime.
 * **The chart is deliberately simple.** No tooltips, no zoom, no time axis. It draws what `Chart`
   describes.
-* **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup.
-  That is milliseconds for tens of tools and would need revisiting at hundreds.
+* **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup,
+  so a malformed tool is a startup error that names the field. Measured 2026-09-19 with
+  `pnpm measure:registry` on Node v24.21.0 (linux x64, Intel Xeon): 500 synthetic current-contract
+  manifests, two inputs each. Three consecutive process runs, 21 timed constructions after 5
+  warmups, had medians of 0.71 ms, 0.98 ms and 0.77 ms (lowest sample 0.47 ms, highest 1.96 ms).
+  Under a millisecond at several hundred tools, so the constructor stays eager. Revisit if a host
+  is in the thousands. The script times `new RegistrySource` only. Generation sits outside the
+  timed region, and so does JSON.parse: a host already has objects when it constructs the source.
 * **No `series` renderer split.** See §13.
 * **Node 24 or newer for development.** Tools and tests run as TypeScript with no build step, which is
   worth the floor.
