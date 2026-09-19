@@ -759,7 +759,7 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 19.5 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, and 0.5 KB with richer cards |
+| Runtime plus the bench's own wiring | 19.6 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, and 0.5 KB with richer cards |
 | Stylesheet | 0.9 KB | |
 | Worker entry | 3.3 KB | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
