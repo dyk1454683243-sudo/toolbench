@@ -161,7 +161,10 @@ toolbench/
 │   ├── cases.test.ts               runs every tool's manifest and fixtures
 │   ├── tsconfig.json               tools compile with no DOM and no path aliases
 │   ├── percentiles/                pure, main thread, group of fields and table
-│   └── queue-explorer/             pure, worker, group of series and fields, plus convergence tests
+│   ├── queue-explorer/             pure, worker, group of series and fields, plus convergence tests
+│   ├── utf8-bytes/                 pure, main thread, group of fields and bytes
+│   ├── regex-explainer/            pure, main thread, text and code, autoRun
+│   └── histogram/                  pure, main thread, series-only bar chart with two axes
 ├── bench/
 │   ├── index.html                  card mode, theming, lifecycle status
 │   ├── failure.html                the failing tool, off the landing page
