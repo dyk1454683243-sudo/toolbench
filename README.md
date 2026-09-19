@@ -180,6 +180,10 @@ tools/reverse/
 }
 ```
 
+`sdk` is 1 on purpose, because a v1 manifest still being valid is the compatibility promise made
+concrete: the current contract is 3, and declaring 1 opts out of everything added since (`bytes` in v2,
+`samples` in v3). See [docs/versioning.md](docs/versioning.md).
+
 **2. Register it.** Once per site:
 
 ```ts
@@ -442,7 +446,7 @@ execute with no build step. Any bundler for the host site; the examples use Vite
 |---|---|
 | `packages/sdk` | The contract: types, manifest validation, version migration, fixture runner. No dependencies, no DOM. |
 | `packages/runtime` | `<tool-host>`: the element, the form, the renderers, the runner, the worker protocol. |
-| `tools/` | Two example tools, with fixtures and help. |
+| `tools/` | Three example tools (`percentiles`, `queue-explorer`, `utf8-bytes`), with fixtures and help. |
 | `bench/` | The test bench: three display modes, both threading modes, host theming, and a tool that fails on purpose. |
 | `docs/` | Architecture, authoring, versioning. |
 

@@ -93,6 +93,10 @@ once.
 }
 ```
 
+`sdk` is 1 on purpose, because a v1 manifest still being valid is the compatibility promise made
+concrete: the current contract is 3 (§3), and declaring 1 opts out of everything added since (`bytes` in
+v2, `samples` in v3).
+
 `dir: "ltr"` matters more than it looks. Base64 is not prose, and inside a right-to-left page it would
 otherwise be laid out backwards.
 
