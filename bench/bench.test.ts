@@ -810,6 +810,95 @@ describe("failure paths", () => {
 });
 
 describe("accessibility wiring", () => {
+	it("names the facade button with the visible try/open hint, not just Open plus the tool name", async () => {
+		/*
+		 * WCAG 2.5.3 (Label in Name). The facade is one button wrapping the card body. Its visible
+		 * affordance is "Try it" (seeded) or "Open this tool" (not). An aria-label of
+		 * "Open ${name}" hid that text, so a speech-input user saying "click Try it" matched nothing.
+		 *
+		 * ⚠️ axe reports this only when the experimental `label-content-name-mismatch` rule is
+		 * enabled by id. Default tags, even a run that asks for every WCAG 2.1 rule, skip it.
+		 */
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		await page.waitForSelector("#cards tool-host[tool=percentiles]");
+		await page.waitForSelector("tool-host[tool=percentiles][data-seed]");
+
+		const names = await page.evaluate(() => {
+			const read = (host: Element | null) => {
+				const root = host?.shadowRoot;
+				const hint = root?.querySelector(".tb-facade-hint")?.textContent ?? "";
+				const name = root?.querySelector(".tb-facade")?.getAttribute("aria-label") ?? "";
+				return { hint, name };
+			};
+			return {
+				seeded: read(document.querySelector("tool-host[tool=percentiles][data-seed]")),
+				unseeded: read(document.querySelector("#cards tool-host[tool=percentiles]")),
+			};
+		});
+
+		assert.equal(names.seeded.hint, "Try it");
+		assert.ok(
+			names.seeded.name.includes(names.seeded.hint),
+			`seeded facade name "${names.seeded.name}" must contain the visible hint "${names.seeded.hint}"`,
+		);
+		assert.match(names.seeded.name, /Percentiles/, "and still names the tool, so the card is not anonymous");
+
+		assert.equal(names.unseeded.hint, "Open this tool");
+		assert.ok(
+			names.unseeded.name.includes(names.unseeded.hint),
+			`unseeded facade name "${names.unseeded.name}" must contain the visible hint "${names.unseeded.hint}"`,
+		);
+		assert.match(names.unseeded.name, /Percentiles/);
+		await page.close();
+	});
+
+	it("gives every title link a 24px-tall target, not just the text metrics", async () => {
+		/*
+		 * WCAG 2.5.8 (Target Size). `.tb-name` is 1.05rem with no padding, so the pageUrl anchor
+		 * measured 160×20 against the 24px floor. The rule applies in every mode that uses the
+		 * title link, not only compact; today that is card mode.
+		 *
+		 * ⚠️ axe reports this only with `wcag22aa` in the tag list. A tag list that stops at
+		 * WCAG 2.1 never evaluates it.
+		 */
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const closed = page.locator("#cards tool-host[tool=percentiles]");
+		await closed.locator(".tb-name a").waitFor();
+
+		const measure = async (host: ReturnType<typeof page.locator>) => {
+			const link = host.locator(".tb-name a");
+			const box = await link.boundingBox();
+			const css = await link.evaluate((el) => {
+				const style = getComputedStyle(el);
+				return { minHeight: style.minHeight, paddingTop: style.paddingTop, paddingBottom: style.paddingBottom };
+			});
+			return { box, css };
+		};
+
+		const onClosed = await measure(closed);
+		const closedBox = onClosed.box;
+		assert.ok(closedBox, "a card with pageUrl must make the title a link");
+		assert.ok(
+			closedBox.height >= 24,
+			`closed-card title link is ${closedBox.height}px tall, need at least 24 (css min-height ${onClosed.css.minHeight})`,
+		);
+		assert.ok(closedBox.width >= 24, `closed-card title link is ${closedBox.width}px wide, need at least 24`);
+		assert.equal(onClosed.css.minHeight, "24px", "the floor is documented in CSS, not only observed");
+		assert.ok(parseFloat(onClosed.css.paddingTop) > 0 && parseFloat(onClosed.css.paddingBottom) > 0, "block padding is what grows the hit target into the head");
+
+		// Same rule after activation: the title link is still there, still the same styles.
+		await closed.locator(".tb-facade").click();
+		await closed.locator(".tb-form").waitFor();
+		const onOpen = await measure(closed);
+		const openBox = onOpen.box;
+		assert.ok(openBox, "the title stays a link after the card opens");
+		assert.ok(openBox.height >= 24, `open-card title link is ${openBox.height}px tall, need at least 24`);
+		assert.equal(onOpen.css.minHeight, "24px");
+		await page.close();
+	});
+
 	it("labels every control, describes it, and announces results in a status region", async () => {
 		const page = await browser.newPage();
 		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
