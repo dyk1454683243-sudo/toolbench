@@ -57,10 +57,16 @@ const BUDGETS = [
 	 */
 	{ label: "bench fixtures", pattern: /^bench-fixtures-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 	{ label: "bench fixtures, worker copy", pattern: /^worker-bench-fixtures-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	/*
+	 * The demo highlighter passed to `defineToolHost({ highlight })`. Host-only, split out of `boot` for
+	 * the same reason as the theme switch: a consumer does not download it.
+	 */
+	{ label: "bench highlighter", pattern: /^bench-highlight-[^/]+\.js$/, budget: 1_500, deployOnly: true },
 	{ label: "stylesheet", pattern: /^boot-[^/]+\.css$/, budget: 1_200 },
 	{ label: "worker entry", pattern: /^tool\.worker-[^/]+\.js$/, budget: 4_000 },
 	{ label: "tool: percentiles", pattern: /^tool-percentiles-[^/]+\.js$/, budget: 2_000 },
 	{ label: "tool: queue-explorer", pattern: /^tool-queue-explorer-[^/]+\.js$/, budget: 2_000 },
+	{ label: "tool: json-code", pattern: /^tool-json-code-[^/]+\.js$/, budget: 2_000 },
 	/*
 	 * The worker's own copies. Vite builds the worker in a separate Rollup pass, so every tool
 	 * reachable from it is emitted twice. A reader downloads one copy (a tool declares one thread);
@@ -69,6 +75,7 @@ const BUDGETS = [
 	 */
 	{ label: "worker copy: percentiles", pattern: /^worker-tool-percentiles-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 	{ label: "worker copy: queue-explorer", pattern: /^worker-tool-queue-explorer-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	{ label: "worker copy: json-code", pattern: /^worker-tool-json-code-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 ];
 
 let files;

@@ -326,7 +326,9 @@ opt-in and has to justify itself:
 * the state machine: facade, loading, idle, running, result, stale, error;
 * accessibility: label association, `aria-describedby`, `aria-invalid` driven by `error.input`, a
   `role="status"` region carrying a short summary, focus moved only on an explicit run;
-* teardown, which is what stops a worker leaking on client-side navigation.
+* teardown, which is what stops a worker leaking on client-side navigation;
+* an optional `highlight` hook on `defineToolHost`, so a host can paint `code` results without the
+  runtime bundling a highlighter. The hook returns a `Node`, not a string.
 
 **`runner.ts`** executes. Its whole job is the difference between "call a function" and "call a
 function that might not come back":
@@ -771,7 +773,9 @@ production build:
   fresh worker;
 * a crash reads differently from bad input, and bad input marks the right control invalid;
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
-* theming through custom properties only.
+* theming through custom properties only;
+* a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps
+  readable plain text.
 
 Two habits worth keeping. **Test against the built artifact**, because a minifier deleted a loop that
 made a timeout test pass for the wrong reason (§14). And **assert an allowlist rather than a denylist**
@@ -864,8 +868,10 @@ Known and accepted, with what each costs.
 * **No sandbox.** A tool runs with the page's privileges. Worker mode isolates the *thread*, not the
   origin: it shares cookies and does not inherit the page's Content-Security-Policy. Fine for code you
   wrote; not fine for code you did not.
-* **No syntax highlighting for `code` results.** The `data-lang` attribute is a hook for a host that
-  already has a highlighter. Bundling one would double the runtime.
+* **No bundled syntax highlighter.** `code` results stay readable as preformatted text with
+  `data-lang` set. A host that already has a highlighter passes `highlight` to `defineToolHost`. The
+  hook returns a `Node`, not a string, so the runtime never assigns `innerHTML`. Bundling one would
+  roughly double the runtime.
 * **The chart is deliberately simple.** No tooltips, no zoom, no time axis. It draws what `Chart`
   describes.
 * **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup.
@@ -992,7 +998,7 @@ declaration, so browsers without that function get the light palette rather than
 
 | Export | Kind |
 |---|---|
-| `defineToolHost`, `ToolHost`, `ToolHostConfig`, `Mode` | the element |
+| `defineToolHost`, `ToolHost`, `ToolHostConfig`, `Mode` | the element. `ToolHostConfig.highlight` is the optional host highlighter for `code` results |
 | `RegistrySource`, `ToolSource`, `RegistryEntry`, `ToolNotFoundError` | sources |
 | `Runner`, `RunHooks`, `RunnerOptions`, `isSuperseded` | execution |
 | `ToolTimeoutError`, `ToolCrashError`, `WorkerUnavailableError`, `Request`, `Response` | protocol |

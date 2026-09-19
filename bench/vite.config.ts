@@ -42,6 +42,11 @@ function toolChunk(id: string, prefix: string): string | null {
 		// emit two files with it. Prefixed the way the tool chunks already are, for the same reason.
 		return prefix.startsWith("worker") ? "worker-bench-fixtures" : "bench-fixtures";
 	}
+	/*
+	 * And the demo highlighter, by the same argument: a host concern that no consumer ships, so it must
+	 * not land in the chunk whose size the README quotes.
+	 */
+	if (/\/bench\/src\/highlight\.ts$/.test(id)) return "bench-highlight";
 	return null;
 }
 

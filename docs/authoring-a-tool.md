@@ -467,6 +467,12 @@ which is how one result holds two comparable sets: `tools/queue-explorer` uses "
 
 { kind: "code", lang: "json", source: '{"ok":true}' }
 
+`code` is readable preformatted text with `data-lang` set. The runtime does not highlight it: a
+highlighter would roughly double `@toolbench/runtime`, and a host usually already has one. Pass
+`highlight?: (source: string, lang: string) => Node` to `defineToolHost` to replace the text node
+inside the block. The return type is a `Node` on purpose. A string would need `innerHTML`, which
+[SECURITY.md](../SECURITY.md) forbids. Omit the hook and the source stays plain text.
+
 { kind: "bytes",
   bytes: [72, 195, 169, 108],
   offset: 0,                    // what to LABEL the first byte, for a window into something larger
