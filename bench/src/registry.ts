@@ -27,32 +27,14 @@ const modules = {
 	...(import.meta.glob("../fixtures/*/index.ts") as Record<string, () => Promise<unknown>>),
 };
 
-/**
- * Map a globbed manifest path back to the repository directory a visitor should open.
- *
- * The live demo's claim is "one function and one JSON file". The card has to point at
- * `tools/<id>/` (or `bench/fixtures/<id>/` for a test instrument) or that claim is just text.
- */
-function sourceDirFromManifestPath(path: string): string {
-	const tools = /\/tools\/([^/]+)\/tool\.json$/.exec(path);
-	if (tools) return `tools/${tools[1]}`;
-	const fixtures = /\/fixtures\/([^/]+)\/tool\.json$/.exec(path);
-	if (fixtures) return `bench/fixtures/${fixtures[1]}`;
-	throw new Error(`cannot place ${path} in the repository tree`);
-}
-
-export const registry: Record<string, RegistryEntry> = {};
-export const toolSourceDir: Record<string, string> = {};
-
-for (const [path, manifest] of Object.entries(manifests)) {
-	const dir = path.slice(0, path.lastIndexOf("/"));
-	const id = dir.split("/").at(-1) ?? path;
-	const load = modules[`${dir}/index.ts`];
-	if (!load) throw new Error(`${id} has a tool.json but no index.ts beside it`);
-	registry[id] = { manifest, load: load as RegistryEntry["load"] };
-	toolSourceDir[id] = sourceDirFromManifestPath(path);
-}
+export const registry: Record<string, RegistryEntry> = Object.fromEntries(
+	Object.entries(manifests).map(([path, manifest]) => {
+		const dir = path.slice(0, path.lastIndexOf("/"));
+		const id = dir.split("/").at(-1) ?? path;
+		const load = modules[`${dir}/index.ts`];
+		if (!load) throw new Error(`${id} has a tool.json but no index.ts beside it`);
+		return [id, { manifest, load: load as RegistryEntry["load"] }];
+	}),
+);
 
 export const toolIds = Object.keys(registry).sort();
-/** Example tools only. Bench fixtures stay off the front-page grid. */
-export const exampleToolIds = toolIds.filter((id) => toolSourceDir[id]?.startsWith("tools/"));

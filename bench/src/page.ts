@@ -1,7 +1,7 @@
 import "./boot.ts";
-import { source, toolPageUrl } from "./boot.ts";
-import { toolIds, toolSourceDir } from "./registry.ts";
-import { appendSource } from "./source.ts";
+import { source } from "./boot.ts";
+import { toolIds } from "./registry.ts";
+import { appendSource, toolSourceDir } from "./source.ts";
 import { installThemeControl } from "./theme.ts";
 
 installThemeControl();
@@ -58,7 +58,7 @@ if (manifest) {
 const switcher = document.getElementById("switcher");
 for (const id of toolIds) {
 	const link = document.createElement("a");
-	link.href = toolPageUrl(id);
+	link.href = `./tool.html?id=${encodeURIComponent(id)}`;
 	link.textContent = id;
 	if (id === manifest?.id) link.setAttribute("aria-current", "page");
 	switcher?.append(link);

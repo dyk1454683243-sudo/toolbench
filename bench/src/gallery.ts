@@ -1,7 +1,6 @@
 import "./boot.ts";
 import { source } from "./boot.ts";
-import { exampleToolIds, toolSourceDir } from "./registry.ts";
-import { appendSource } from "./source.ts";
+import { appendSource, exampleToolIds, toolSourceDir } from "./source.ts";
 import { installThemeControl } from "./theme.ts";
 
 installThemeControl();

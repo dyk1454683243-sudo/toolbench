@@ -17,14 +17,6 @@ export const source = new RegistrySource(registry);
 // highlight.ts so the query-param read and those hooks stay out of the chunk the README publishes.
 const hostHook = hostHighlight(location.search);
 
-/**
- * Vite's `base`, always with a trailing slash. `/` locally, `/toolbench/` on Pages.
- * Origin-absolute `/tool.html` would 404 on a project Pages path.
- */
-export function toolPageUrl(id: string): string {
-	return `${import.meta.env.BASE_URL}tool.html?id=${encodeURIComponent(id)}`;
-}
-
 defineToolHost({
 	source,
 	/*
@@ -33,6 +25,11 @@ defineToolHost({
 	 * a console warning, which is a slower tool rather than a broken page.
 	 */
 	workerFactory: () => new Worker(new URL("./tool.worker.ts", import.meta.url), { type: "module" }),
-	pageUrl: toolPageUrl,
+	/*
+	 * Relative to the current page, not to the origin. Every bench HTML file sits in the same
+	 * directory, so `./tool.html` works at `/` locally and at `/toolbench/` on project Pages.
+	 * An origin-absolute `/tool.html` would 404 under that prefix.
+	 */
+	pageUrl: (id) => `./tool.html?id=${encodeURIComponent(id)}`,
 	...(hostHook ? { highlight: hostHook } : {}),
 });
