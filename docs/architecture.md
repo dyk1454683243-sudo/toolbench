@@ -173,7 +173,7 @@ toolbench/
 │   ├── new-tool.mjs                scaffolds the four files under tools/<id>
 │   └── size-check.mjs              transfer budgets for the built bench
 ├── docs/                           this file, authoring, versioning
-└── .github/workflows/ci.yml        typecheck, tests, build, browser tests
+└── .github/workflows/             tests.yml, build.yml, release.yml
 ```
 
 ## 5. The contract
@@ -319,6 +319,8 @@ opt-in and has to justify itself:
 **`element.ts`** is `<tool-host>`, and it is the only public surface most hosts touch. It owns:
 
 * reading `tool` and `mode` attributes, and the inline seed;
+* a `values` setter and `run()` method, so a host can prefill the form and opt into running without
+  reaching into the shadow root;
 * deciding when to activate (click for a card, intersection for a page or embed);
 * building the form from `manifest.inputs`, including labels, descriptions, bounds and text direction;
 * the state machine: facade, loading, idle, running, result, stale, error;
@@ -561,7 +563,7 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 | A select has two or more options and its default is one of them | `validate.ts` | A control with one choice, or none selected |
 | `kinds` includes `"error"` | `validate.ts` | A tool with no way to reject bad input |
 | Every case's `expect.kind` is declared in `kinds` | `tools/cases.test.ts` | `kinds` drifts into fiction |
-| Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label | `validate.ts` | A button that fills the form with a value the form itself refuses |
+| Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label or the same input values | `validate.ts` | A button that fills the form with a value the form itself refuses, or two buttons that do the same thing |
 | Every declared sample runs without throwing | `tools/cases.test.ts` | The first thing a reader clicks is the first thing to crash |
 | Only a `pure` tool with no assets may be `card: "live"` | `validate.ts` | A landing page card could read files or call the network |
 | `timeoutMs` requires `thread: "worker"` | `validate.ts` | A field that cannot do what it says |
@@ -710,25 +712,47 @@ build: {
 | Command | Output |
 |---|---|
 | `pnpm build` | `packages/*/dist`: ESM plus `.d.ts` and source maps. No bundling; consumers bundle. |
-| `pnpm bench:build` | `bench/dist`: three HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk. Per-tool chunks are emitted twice, once for the worker pass, which §13 explains. |
+| `pnpm bench:build` | `bench/dist`: three HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk, and two bench-only chunks for the theme switch and the fixture manifests. Per-tool chunks and the fixture chunk are emitted twice, once for the worker pass, which §13 explains. |
 
 ### 11.5 CI
 
-`.github/workflows/ci.yml`, on push to `main` and on every pull request: install with a frozen
-lockfile, typecheck, test, build, build the bench, install Chromium, run the browser tests. The step
-that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current SDK and
-runtime. That is the mechanism behind the compatibility promise, not a nicety.
+Three workflows, not one. `tests.yml` and `build.yml` run on push to `main` and on every pull request,
+and `release.yml` runs on push to `main` only. `tests.yml` installs with a frozen lockfile, typechecks
+and runs `pnpm test`; `build.yml` builds the packages, checks the published contents, builds the bench,
+checks the transfer budgets, installs Chromium and runs the browser suite. Both job names are required
+status checks on `main`, so renaming either one silently stops gating anything.
+
+The step that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current
+SDK and runtime. That is the mechanism behind the compatibility promise, not a nicety.
+
+`tests.yml` also runs `pnpm coverage` after `pnpm test` and writes the uncovered list to the job summary.
+It reports; it does not gate on a percentage, and the step is advisory so a report cannot block a merge.
+The globs come from the `test` script rather than a copy of it. The browser suite is not in those
+numbers, and the report says which files it never loaded for that reason.
 
 ## 12. Testing strategy
 
-Four layers. Each catches something the others structurally cannot.
+Five layers. Each catches something the others structurally cannot.
 
 | Layer | Where it runs | What it covers | Count |
 |---|---|---|---|
 | `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 79 |
+| `packages/runtime/src/*.test.ts` | Node | Coerce and the partial merge used by typing, samples, and the host `values` setter: clamp, refuse, truncate, unknown ids | 9 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
+| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 38 |
+
+`pnpm coverage` runs the Node rows of that table with Node's built-in test coverage (the same
+collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not
+fail on a percentage, and the CI step is advisory, so a report cannot hold a merge shut. It takes the
+globs from the `test` script rather than keeping a copy: a copy had already drifted by a whole test
+directory within a day of being written, and a coverage figure over a smaller suite than you think you
+are measuring reads as good news.
+
+The browser row is not in those numbers: Playwright coverage is a different collection, and files the
+Node process never loads (`packages/runtime`, which needs a DOM) do not appear as 0%. That is why the
+report ends with the list of files it never loaded, which is the honest caveat on a figure covering 10
+of 22 source files. Read that list once and file what it reveals.
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:
@@ -737,6 +761,8 @@ production build:
 * a seeded card shows a real result before anything runs;
 * activation does not run the tool, and the status says "press Run";
 * changing an input marks the result stale without re-running, and Run clears it;
+* a host `values` write fills the form without running, clamps like typing, works before a card
+  opens, and `run()` after it produces a result;
 * a sample fills the form, sets several inputs at once, leaves the ones it does not name alone, keeps
   focus on the button that was pressed, and draws no row on a card;
 * Run attention is a fill change, not a ring, so it cannot be mistaken for `:focus-visible`;
@@ -759,9 +785,9 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 19.6 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, and 0.5 KB with richer cards |
+| Runtime plus the bench's own wiring | 20.2 KB$2 | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, and 0.6 KB with the host `values` and `run()` API |
 | Stylesheet | 0.9 KB | |
-| Worker entry | 3.3 KB | Only on pages with a worker-mode tool, and only after activation |
+| Worker entry | 3.0 KB$2 | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
 | `queue-explorer` chunk | 1.2 KB | |
 | A page with no tool | 0 bytes | Nothing is imported |
@@ -771,11 +797,26 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
-That chunk now measures 19,837 bytes against a 20,500 byte ceiling, so the next thing that costs real
+That chunk now measures 20,229 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
 table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
 bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
 rather than only here.
+
+The host `values` and `run()` API cost 567 of those bytes, measured against `main` after the bench
+fixtures were split out, which leaves 271 bytes free. That is not much, and it is worth knowing which
+way the next spend goes: splitting the chart renderer is the lever with real room behind it, and the
+fixture split is already spent.
+
+**What the figure deliberately excludes.** A test instrument that no consumer ships does not belong in a
+number a consumer reads, so two of them are split into their own chunks with their own budget lines: the
+bench's theme switch, and the fixture manifests under `bench/fixtures`. The second was not obvious. Manifests
+are collected with an eager glob, which inlines each `tool.json` into whichever chunk imports it, and
+`registry.ts` is reachable from every entry, so a fixture whose whole purpose is to fail on purpose was
+compiling into both `boot` and the worker bundle: 340 and 334 bytes for one fixture, at a point when the
+ceiling had 498 bytes left and three more fixtures were queued in open pull requests. Splitting them did not
+make the bench download less. It made the published figure answer the question it claims to answer, because a
+consumer running the tool-directory harness over their own tools has no `bench/fixtures` at all.
 
 **One duplication to know about.** Vite builds a worker in a separate Rollup pass, so every tool
 reachable from the worker is emitted twice: `tool-<id>` for the main thread and `worker-tool-<id>` for
@@ -811,6 +852,7 @@ is here because the guards look arbitrary without it.
 | Run's stale-result cue looked like a focus ring | After a sample click the pressed pill kept focus and Run wore a soft ring hugging its edge, the same family of cue as `:focus-visible`. A keyboard reader could take the halo as "Run is where my keyboard is" and press Enter, which would re-fire the pill | A fill derived from `--tb-accent` that moves away from the surface behind it, darker on white and paler on near-black, not an outline or box-shadow. Browser test asserts the fill changes, that attention draws no ring, and that `:focus-visible` is still a 2px outline when both states are on |
 | A card facade's name hid its visible hint | `aria-label` was `Open ${name}` while the button said "Try it" (or "Open this tool" without a seed). A speech-input user saying "click Try it" matched nothing | The name is `${hint}: ${name}`, from the same string the hint uses. Browser test asserts the accessible name contains the visible hint on a seeded card and an unseeded one |
 | A card title link was 20px tall | `.tb-name` is 1.05rem with no padding, so the `pageUrl` anchor was exactly its text (measured 160×20 against the 24px WCAG 2.5.8 floor) | Block padding and `min-height: 24px` on `.tb-name a`, for every mode that uses the title link. Browser test measures the box |
+| `percentiles` treated a thousands grouping as extra measurements | Pasting `1,204 980 1,100 1,340` was read as seven measurements (1, 204, 980, 1, 100, 1, 340), so the result showed min 1 and mean 232.4 with no error. Every figure on screen was wrong and all of them looked reasonable | A comma between digits is refused as `{ kind: "error" }` naming the token, in the same style as `"18ms" is not a number`. Fixtures assert the refusal and lock `12, 14, 15` as still valid |
 
 ## 15. Limitations
 

@@ -83,6 +83,12 @@ function validateInput(raw: unknown, path: string): InputSpec {
 		case "text":
 		case "textarea": {
 			if (typeof o.default !== "string") fail(`${path}.default`, `a ${type} input needs a string default`);
+			/*
+			 * ⚠️ `default` is not checked against `maxLength`. Samples are: assigning a sample walks
+			 * past the browser's maxlength attribute. Adding the same check here would reject
+			 * manifests contract v3 still accepts, which an additive change may not do. Documented in
+			 * authoring-a-tool.md. Do not add it in a patch; a major is the path if it ever closes.
+			 */
 			break;
 		}
 		case "number": {
@@ -121,6 +127,33 @@ function validateInput(raw: unknown, path: string): InputSpec {
 }
 
 /**
+ * First repeated value in a list, with the index of its earlier occurrence.
+ *
+ * Used so a uniqueness error can name the colliding field (`samples[2]`, `inputs[1].id`) instead of
+ * the whole array. The previous wording listed every value and pointed at `samples` or `inputs`,
+ * which is where an author looks last.
+ */
+function firstRepeat(values: string[]): { index: number; previous: number } | undefined {
+	const seen = new Map<string, number>();
+	for (let i = 0; i < values.length; i++) {
+		const value = values[i]!;
+		const previous = seen.get(value);
+		if (previous !== undefined) return { index: i, previous };
+		seen.set(value, i);
+	}
+	return undefined;
+}
+
+/** Stable identity of a sample's `input` object: keys sorted, then JSON. */
+function samplePayloadKey(input: Record<string, unknown>): string {
+	const sorted: Record<string, unknown> = {};
+	for (const key of Object.keys(input).sort()) {
+		sorted[key] = input[key];
+	}
+	return JSON.stringify(sorted);
+}
+
+/**
  * Samples, checked against the inputs they claim to fill.
  *
  * ⚠️ Stricter than the runtime's typed-input path, on purpose. A reader's out-of-range number is
@@ -137,6 +170,7 @@ function validateSamples(raw: unknown, specs: InputSpec[]): void {
 	if (samples.length === 0) fail("samples", "is empty; omit the key rather than declaring that there are no examples");
 	const byId = new Map(specs.map((spec) => [spec.id, spec]));
 	const labels: string[] = [];
+	const payloads: string[] = [];
 
 	samples.forEach((sample, i) => {
 		const at = `samples[${i}]`;
@@ -145,6 +179,7 @@ function validateSamples(raw: unknown, specs: InputSpec[]): void {
 		const input = obj(so.input, `${at}.input`);
 		const keys = Object.keys(input);
 		if (keys.length === 0) fail(`${at}.input`, "sets no values; a sample that fills nothing is a button that does nothing");
+		payloads.push(samplePayloadKey(input));
 
 		for (const key of keys) {
 			const where = `${at}.input.${key}`;
@@ -190,8 +225,24 @@ function validateSamples(raw: unknown, specs: InputSpec[]): void {
 		}
 	});
 
-	if (new Set(labels).size !== labels.length) {
-		fail("samples", `labels must be unique, got ${labels.join(", ")}. Two identical buttons in a row is a typo`);
+	const repeatedLabel = firstRepeat(labels);
+	if (repeatedLabel) {
+		fail(
+			`samples[${repeatedLabel.index}]`,
+			`label "${labels[repeatedLabel.index]}" is already used by samples[${repeatedLabel.previous}]. Two identical buttons in a row is a typo`,
+		);
+	}
+	/*
+	 * Two samples with different labels and the same `input` render as two buttons that do the same
+	 * thing. That is the likelier copy-paste: the label was renamed and the values were not. Compared
+	 * with keys sorted, so key order in the JSON is not a way around it.
+	 */
+	const repeatedPayload = firstRepeat(payloads);
+	if (repeatedPayload) {
+		fail(
+			`samples[${repeatedPayload.index}].input`,
+			`matches samples[${repeatedPayload.previous}].input. Two buttons that fill the same values are a copy-paste; change one or delete it`,
+		);
 	}
 }
 
@@ -252,7 +303,10 @@ export function validateManifest(raw: unknown): Manifest {
 	if (inputs.length === 0) fail("inputs", "a tool needs at least one input; a tool with none is a constant");
 	const specs = inputs.map((input, i) => validateInput(input, `inputs[${i}]`));
 	const ids = specs.map((s) => s.id);
-	if (new Set(ids).size !== ids.length) fail("inputs", `input ids must be unique, got ${ids.join(", ")}`);
+	const repeatedId = firstRepeat(ids);
+	if (repeatedId) {
+		fail(`inputs[${repeatedId.index}].id`, `"${ids[repeatedId.index]}" is already used by inputs[${repeatedId.previous}]`);
+	}
 	/*
 	 * ⚠️ No cap on how many inputs may be primary, and there used to be one.
 	 *

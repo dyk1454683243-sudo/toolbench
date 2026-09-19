@@ -49,6 +49,14 @@ const BUDGETS = [
 	 * unnoticed either.
 	 */
 	{ label: "bench theme switch", pattern: /^bench-theme-[^/]+\.js$/, budget: 1_500, deployOnly: true },
+	/*
+	 * The fixture manifests, split out of `boot` for the same reason as the theme switch and measured for the
+	 * same one: a chunk nobody watches is a chunk that grows. 571 bytes for one fixture, and open pull
+	 * requests add three more, so the ceiling is set to leave room for those without leaving room for
+	 * everything.
+	 */
+	{ label: "bench fixtures", pattern: /^bench-fixtures-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	{ label: "bench fixtures, worker copy", pattern: /^worker-bench-fixtures-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 	{ label: "stylesheet", pattern: /^boot-[^/]+\.css$/, budget: 1_200 },
 	{ label: "worker entry", pattern: /^tool\.worker-[^/]+\.js$/, budget: 4_000 },
 	{ label: "tool: percentiles", pattern: /^tool-percentiles-[^/]+\.js$/, budget: 2_000 },
@@ -115,6 +123,13 @@ if (process.argv.includes("--update")) {
 		 * longer find is a figure nobody checks. Matching the least text that still identifies the row is
 		 * what keeps it working when somebody rewords the label.
 		 */
+		/*
+		 * ⚠️ The badge as well as the table. It is the most-read number in the repository and the only one
+		 * that was not covered here, so it sat at 19.6 KB while the table beside it moved twice. A published
+		 * figure the refresh tool cannot reach is a figure that rots, which is the whole argument for this
+		 * block existing.
+		 */
+		["README.md", /(runtime-)[\d.]+(%20KB%20gzip)/, kb(find("runtime + host wiring")).replace(" KB", "")],
 		["README.md", /(\| Runtime[^|]*\| )[\d.]+ KB/, kb(find("runtime + host wiring"))],
 		["docs/architecture.md", /(\| Runtime[^|]*\| )[\d.]+ KB/, kb(find("runtime + host wiring"))],
 		["README.md", /(\| Worker entry[^|]*\| )[\d.]+ KB/, kb(find("worker entry"))],
@@ -123,7 +138,8 @@ if (process.argv.includes("--update")) {
 	for (const [file, pattern, value] of edits) {
 		const path = join(import.meta.dirname, "..", file);
 		const before = readFileSync(path, "utf8");
-		const after = before.replace(pattern, `$1${value}`);
+		// `$2` is empty for the single-group table patterns and carries the badge suffix for the badge one.
+		const after = before.replace(pattern, `$1${value}$2`);
 		if (after !== before) {
 			const { writeFileSync } = await import("node:fs");
 			writeFileSync(path, after);

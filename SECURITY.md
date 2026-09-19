@@ -23,6 +23,14 @@ cookies and storage. It is not a sandbox and the documentation never claims othe
 code you did not write, this is the wrong design and you want an iframe with a separate origin, or a
 server.
 
+**What a reader types is visible to the page that embedded the tool.** `<tool-host>` attaches its shadow
+root in `open` mode, so the host page can already read every control through `shadowRoot`, and the `values`
+getter makes that supported rather than a reach into internals. So a tool is not a private place to put
+something: whatever a reader pastes, the surrounding page can read and send anywhere. That is the same trust
+level as any script on the page, and the host is first-party code by the paragraph above, but it is worth
+stating because these tools invite people to paste real data. If you need input the embedding page cannot
+see, this is the wrong design for the same reason worker mode is not a sandbox.
+
 **In scope**, and worth reporting:
 
 * an XSS path through tool output, a manifest, or a seed. Every node is built through the three helpers
