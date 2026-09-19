@@ -88,9 +88,11 @@ later.
 
 ## Proposing a tool
 
-Tools in this repository exist to exercise the runtime, not to be a collection. Two ship today:
-`percentiles` covers a pure main-thread tool returning a group of fields and a table; `queue-explorer`
-covers a worker-mode tool with progress, a timeout and a chart.
+Tools in this repository exist to exercise the runtime, not to be a collection. The ones that ship
+each cover something the others do not: `percentiles` is a main-thread group of fields and a table,
+`queue-explorer` is a worker with progress and a timeout, `utf8-bytes` is the `bytes` kind,
+`regex-explainer` is `text`, `code` and `autoRun`, and `histogram` is a series-only bar chart with
+two axes and no primary input.
 
 A new tool in this repo needs to cover something neither of those does: a new output kind, a failure mode
 the bench cannot currently produce, a different input shape. A good tool that covers the same ground
