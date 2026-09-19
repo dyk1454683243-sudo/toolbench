@@ -406,8 +406,8 @@ Measured on the built bench with gzip, not estimated:
 
 | | Transfer |
 |---|---|
-| Runtime plus the bench's page wiring, once per page that uses a tool | 19.6 KB |
-| Worker entry, only for pages with a worker-mode tool | 3.3 KB |
+| Runtime plus the bench's page wiring, once per page that uses a tool | 19.7 KB |
+| Worker entry, only for pages with a worker-mode tool | 2.9 KB |
 | `percentiles` tool chunk | 1.2 KB |
 | `queue-explorer` tool chunk | 1.2 KB |
 | A page with no tool on it | 0 bytes |
@@ -456,6 +456,7 @@ pnpm check          # typecheck, unit tests, every tool's fixtures
 pnpm new-tool <id>  # scaffold tools/<id>/ (four files, already green)
 pnpm bench          # the bench on http://localhost:5180
 pnpm test:bench     # the same bench, driven by Chrome
+pnpm coverage       # Node suite coverage: uncovered list, no threshold
 ```
 
 ## Documentation
