@@ -54,6 +54,9 @@ host.run();
   properties, and that list is the whole styling API.
 * **Host-owned syntax highlighting.** Pass `highlight?: (source, lang) => Node` to paint `code`
   results with the highlighter you already have. Omit it and the source stays readable plain text.
+* **Lifecycle status is honoured.** `deprecated` still runs, with a marker a host can style via
+  `data-status` and `--tb-mark-*`. `retired` does not: the element explains, renders `links`, and
+  never fetches the tool's code.
 
 ## Size
 

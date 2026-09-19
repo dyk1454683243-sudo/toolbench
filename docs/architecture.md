@@ -163,11 +163,13 @@ toolbench/
 │   ├── percentiles/                pure, main thread, group of fields and table
 │   └── queue-explorer/             pure, worker, group of series and fields, plus convergence tests
 ├── bench/
-│   ├── index.html                  card mode, theming, failure modes
+│   ├── index.html                  card mode, theming, failure modes, lifecycle status
 │   ├── tool.html                   page mode
 │   ├── article.html                embed mode, two tools in prose
 │   ├── bench.test.ts               the runtime driven by Chrome against the built bench
 │   ├── fixtures/stress/            a tool that misbehaves on purpose
+│   ├── fixtures/retired/           a tool that must not run
+│   ├── fixtures/deprecated/        a tool that still runs, marked
 │   └── src/                        registry, boot, worker entry, page scripts
 ├── scripts/
 │   ├── new-tool.mjs                scaffolds the four files under tools/<id>
@@ -268,11 +270,13 @@ The fields, and who reads each one:
 | `inputs` | element (form), fixture runner (defaults) | |
 | `samples` | validate, element (the row under the form), fixture runner | Labelled example inputs, each `input` partial. Never drawn on a card. |
 | `kinds` | validate, fixture runner, host | Every kind `run` can return. Must include `"error"`. |
-| `card` | element | `"live"`, `"info"`, `"none"`. |
+| `card` | element, validate | `"live"`, `"info"`, `"none"`. Refused when `status` is not `"live"`. |
 | `cardFields` | renderers | How many fields a compact result shows. |
 | `autoRun` | element | Run as the reader types. Off by default. |
 | `timeoutMs` | runner | Worker mode only. Rejected on the main thread. |
-| `help`, `tags`, `links`, `status` | host | Presentation and lifecycle. |
+| `help`, `tags` | host | Presentation. |
+| `links` | element, host | Specs, source, and the replacement for a retired tool. |
+| `status` | element, host | `live` (default), `deprecated`, `retired`. The element honours it. |
 
 ## 6. Components
 
@@ -322,6 +326,7 @@ opt-in and has to justify itself:
 * a `values` setter and `run()` method, so a host can prefill the form and opt into running without
   reaching into the shadow root;
 * deciding when to activate (click for a card, intersection for a page or embed);
+* honouring `status`: retired never activates and renders `links`; deprecated is marked and is not a live card;
 * building the form from `manifest.inputs`, including labels, descriptions, bounds and text direction;
 * the state machine: facade, loading, idle, running, result, stale, error;
 * accessibility: label association, `aria-describedby`, `aria-invalid` driven by `error.input`, a
@@ -568,6 +573,8 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 | Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label or the same input values | `validate.ts` | A button that fills the form with a value the form itself refuses, or two buttons that do the same thing |
 | Every declared sample runs without throwing | `tools/cases.test.ts` | The first thing a reader clicks is the first thing to crash |
 | Only a `pure` tool with no assets may be `card: "live"` | `validate.ts` | A landing page card could read files or call the network |
+| Only a `live` tool may be `card: "live"` | `validate.ts`, `element.ts` | A compact slot would present a tool on the way out, or already gone, as current |
+| A retired tool never activates | `element.ts` | A bookmarked URL would run a tool the author took down |
 | `timeoutMs` requires `thread: "worker"` | `validate.ts` | A field that cannot do what it says |
 | `autoRun` is refused on a worker-mode tool | `validate.ts` | Keystroke-triggered runs of the slowest tools |
 | Every `Output` kind has a renderer | `render/index.ts` exhaustive switch | A blank space in front of a reader |
@@ -580,11 +587,12 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 
 ```
 connectedCallback
-  └─ read seed, list manifests, paint facade
-       └─ (card) click  ──┐
-       └─ (page)  observe ┴─ activate
-                             └─ load module, create Runner, paint form
-                                  └─ run, run, run ...
+  └─ read seed, list manifests, paint
+       ├─ (retired) stop: explain, render links. Never activate.
+       ├─ (card, not deprecated) click ──┐
+       └─ (page/embed) observe ──────────┴─ activate
+                                            └─ load module, create Runner, paint form
+                                                 └─ run, run, run ...
 disconnectedCallback
   └─ runner.dispose()   cancel in flight, terminate the worker
   └─ observer.disconnect()
@@ -781,6 +789,8 @@ production build:
 * a tool that spins forever is killed by the timeout, the page stays responsive, and the next run gets a
   fresh worker;
 * a crash reads differently from bad input, and bad input marks the right control invalid;
+* a retired tool never fetches its code, explains, and renders its links; a deprecated tool is marked,
+  still runs on its page, and is not a live card;
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
 * theming through custom properties only;
 * a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps
@@ -1012,6 +1022,7 @@ declaration, so browsers without that function get the light palette rather than
 | `--tb-radius` | `10px` | Corner radius |
 | `--tb-font`, `--tb-mono` | system stacks | Type |
 | `--tb-gap` | `0.75rem` | Vertical rhythm inside the tool |
+| `--tb-mark-fg`, `--tb-mark-bg` | `--tb-warn`, `--tb-accent-bg` | The deprecated and retired marker. A host sets these on `tool-host`; `data-status` is also on the host so the page can style the element itself |
 
 ### 17.3 Public API index
 

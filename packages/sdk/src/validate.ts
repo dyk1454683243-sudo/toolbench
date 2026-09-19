@@ -277,7 +277,7 @@ export function validateManifest(raw: unknown): Manifest {
 	const blurb = str(o, "blurb", "");
 	if (blurb.length > 200) fail("blurb", `is ${blurb.length} characters; keep it under 200 so it works as a card line and a page description`);
 	str(o, "version", "");
-	if (o.status !== undefined) oneOf(o.status, ["live", "deprecated", "retired"] as const, "status");
+	const status = o.status === undefined ? "live" : oneOf(o.status, ["live", "deprecated", "retired"] as const, "status");
 	if (o.help !== undefined) optStr(o, "help", "");
 	if (o.tags !== undefined) arr(o.tags, "tags").forEach((t, i) => { if (typeof t !== "string") fail(`tags[${i}]`, "must be a string"); });
 	if (o.links !== undefined) {
@@ -352,6 +352,13 @@ export function validateManifest(raw: unknown): Manifest {
 	if (card === "live" && !(capabilities.length === 1 && capabilities[0] === "pure")) {
 		fail("card", 'only a "pure" tool may be a live card — a compact slot must not read files or call networks');
 	}
+	if (card === "live" && status !== "live") {
+		fail(
+			"card",
+			`only a live tool may be a live card — status "${status}" means it is on the way out or already gone, ` +
+				"and a compact slot must not present it as current",
+		);
+	}
 	if (o.autoRun === true && thread === "worker") {
 		fail(
 			"autoRun",
@@ -374,7 +381,7 @@ export function validateManifest(raw: unknown): Manifest {
 		kinds: outputKinds,
 		runtime: { ...runtime, entry: runtime.entry as string, thread },
 		card,
-		status: (o.status as Manifest["status"]) ?? "live",
+		status,
 	};
 }
 

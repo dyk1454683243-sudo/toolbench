@@ -275,7 +275,14 @@ export class ToolHost extends HTMLElement {
 			if (manifest.kinds.includes("series")) await loadChartRenderer();
 			this.#paint();
 
-			if (this.mode === "card") return; // waits for a click
+			/*
+			 * A retired tool is still listed so a bookmarked URL is not a 404. It must not load or
+			 * run: that is the whole reason the status exists. The first version ignored it, so a
+			 * retired tool fetched its code and ran like any other, a field that claimed the tool
+			 * was gone and then did the opposite.
+			 */
+			if (lifecycleStatus(manifest) === "retired") return;
+			if (this.mode === "card") return; // waits for a click; a deprecated card is not a live facade
 			this.#watchForViewport();
 		} catch (error) {
 			this.#fatal(error instanceof Error ? error.message : String(error));
@@ -305,6 +312,9 @@ export class ToolHost extends HTMLElement {
 		if (this.#activation) return this.#activation;
 		if (this.#loaded && this.#runner) return;
 		if (!this.#manifest || !config) return;
+		// A retired tool never loads. Guarded here rather than only in #paint so nothing fetches its
+		// chunk: the field claims the tool is gone, and downloading it anyway would make that a lie.
+		if (lifecycleStatus(this.#manifest) === "retired") return;
 		this.#activation = this.#activateBody(config);
 		try {
 			await this.#activation;
@@ -400,6 +410,7 @@ export class ToolHost extends HTMLElement {
 		const loaded = this.#loaded;
 		const runner = this.#runner;
 		if (!loaded || !runner) return;
+		if (this.#manifest && lifecycleStatus(this.#manifest) === "retired") return;
 
 		this.#hostWroteValues = false;
 		this.#els.output?.removeAttribute("data-stale");
@@ -466,9 +477,15 @@ export class ToolHost extends HTMLElement {
 	#paint(): void {
 		const manifest = this.#manifest;
 		if (!manifest) return;
+		this.#reflectStatus(manifest);
+		if (lifecycleStatus(manifest) === "retired") {
+			this.#paintRetired(manifest);
+			return;
+		}
 		const mode = this.mode;
 		const compact = mode === "card";
 		const pageUrl = config?.pageUrl?.(manifest.id);
+		const life = lifecycleStatus(manifest);
 
 		const body = el("div", { class: "tb-body" });
 		const frame = el("div", { class: "tb" });
@@ -478,20 +495,26 @@ export class ToolHost extends HTMLElement {
 				el(
 					"div",
 					{ class: "tb-head" },
-					el("h3", { class: "tb-name" }, pageUrl && compact ? el("a", { href: pageUrl }, manifest.name) : manifest.name),
+					titleRow(manifest, compact, pageUrl),
 					mode === "page" ? el("p", { class: "tb-blurb" }, manifest.blurb) : null,
 				),
 			);
 		}
 
 		if (!this.#activated || this.#loading) {
-			// The facade: static, and clickable only in card mode.
-			// One string for the visible hint and the accessible name, so they cannot drift.
+			/*
+			 * The facade: static, and clickable only for a live card. A deprecated tool still runs on its
+			 * page, but a compact slot that opens it presents it as current, which is the thing status
+			 * exists to prevent.
+			 */
+			const deprecatedCard = compact && life === "deprecated";
+			// One string for the visible hint and the accessible name, so they cannot drift apart.
 			const hint = this.#seed ? "Try it" : "Open this tool";
 			const preview = el(
 				"div",
 				{ class: "tb-body" },
 				mode === "page" ? null : el("p", { class: "tb-blurb" }, manifest.blurb),
+				mode === "embed" ? lifecycleMark(life) : null,
 				this.#seed
 					? render(
 							this.#seed,
@@ -502,9 +525,9 @@ export class ToolHost extends HTMLElement {
 							}),
 						)
 					: null,
-				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : hint),
+				deprecatedCard ? null : el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : hint),
 			);
-			if (compact && !this.#loading) {
+			if (compact && !this.#loading && !deprecatedCard) {
 				const button = el("button", { class: "tb-facade", type: "button" });
 				/*
 				 * ⚠️ "Open ${name}" failed WCAG 2.5.3. The button's visible affordance is the hint,
@@ -517,6 +540,9 @@ export class ToolHost extends HTMLElement {
 				frame.append(button);
 			} else {
 				frame.append(preview);
+				if (deprecatedCard && pageUrl) {
+					frame.append(el("div", { class: "tb-foot" }, el("a", { href: pageUrl }, "Open the full tool")));
+				}
 			}
 			fill(this.#root, frame);
 			this.#reapplyStyles();
@@ -547,6 +573,8 @@ export class ToolHost extends HTMLElement {
 		const output = el("div", { class: "tb-output", tabindex: "-1" });
 
 		this.#els = { run, progress, status, announce, output };
+		const embedMark = mode === "embed" ? lifecycleMark(lifecycleStatus(manifest)) : null;
+		if (embedMark) body.append(embedMark);
 		body.append(form);
 		/*
 		 * Not on a card. A card has room for one input and a Run button, and a row of buttons would crowd
@@ -584,6 +612,53 @@ export class ToolHost extends HTMLElement {
 	#reapplyStyles(): void {
 		// `fill` on the shadow root clears an appended <style> fallback; adopted sheets survive.
 		if (!("adoptedStyleSheets" in this.#root) || this.#root.adoptedStyleSheets.length === 0) applyStyles(this.#root);
+	}
+
+	#reflectStatus(manifest: Manifest): void {
+		const status = lifecycleStatus(manifest);
+		if (status === "live") this.removeAttribute("data-status");
+		else this.setAttribute("data-status", status);
+	}
+
+	#paintRetired(manifest: Manifest): void {
+		this.#els = {};
+		this.#activated = false;
+		this.#loading = false;
+		const mode = this.mode;
+		const compact = mode === "card";
+		const pageUrl = config?.pageUrl?.(manifest.id);
+		const links = manifest.links ?? [];
+		const frame = el("div", { class: "tb" });
+		if (mode !== "embed") {
+			frame.append(
+				el(
+					"div",
+					{ class: "tb-head" },
+					titleRow(manifest, compact, pageUrl),
+					mode === "page" ? el("p", { class: "tb-blurb" }, manifest.blurb) : null,
+				),
+			);
+		}
+		const explanation =
+			links.length > 0
+				? "This tool has been retired and no longer runs. The links below are the way onward."
+				: "This tool has been retired and no longer runs.";
+		frame.append(
+			el(
+				"div",
+				{ class: "tb-body" },
+				mode === "page" ? null : el("p", { class: "tb-blurb" }, manifest.blurb),
+				mode === "embed" ? lifecycleMark("retired") : null,
+				el("p", { class: "tb-retired", role: "status" }, explanation),
+			),
+		);
+		if (links.length > 0) {
+			frame.append(
+				el("div", { class: "tb-foot" }, ...links.map((link) => el("a", { href: link.href, rel: "noopener" }, link.label))),
+			);
+		}
+		fill(this.#root, frame);
+		this.#reapplyStyles();
 	}
 
 	#control(spec: InputSpec): HTMLElement {
@@ -889,10 +964,27 @@ export class ToolHost extends HTMLElement {
 	}
 
 	#fatal(message: string): void {
+		this.removeAttribute("data-status");
 		const message_el = el("div", { class: "tb-out-error", role: "alert" }, el("span", { class: "tb-error-message" }, message));
 		fill(this.#root, el("div", { class: "tb" }, el("div", { class: "tb-body" }, message_el)));
 		this.#reapplyStyles();
 	}
+}
+
+function lifecycleStatus(manifest: Manifest): NonNullable<Manifest["status"]> {
+	return manifest.status ?? "live";
+}
+
+function lifecycleMark(status: NonNullable<Manifest["status"]>): HTMLElement | null {
+	if (status === "deprecated") return el("span", { class: "tb-mark", "data-status": "deprecated" }, "Deprecated");
+	if (status === "retired") return el("span", { class: "tb-mark", "data-status": "retired" }, "Retired");
+	return null;
+}
+
+function titleRow(manifest: Manifest, compact: boolean, pageUrl: string | undefined): HTMLElement {
+	const name = el("h3", { class: "tb-name" }, pageUrl && compact ? el("a", { href: pageUrl }, manifest.name) : manifest.name);
+	const mark = lifecycleMark(lifecycleStatus(manifest));
+	return mark ? el("div", { class: "tb-title" }, name, mark) : name;
 }
 
 /**

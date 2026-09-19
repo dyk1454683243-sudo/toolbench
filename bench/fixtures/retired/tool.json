@@ -1,0 +1,30 @@
+{
+  "sdk": 1,
+  "id": "retired",
+  "name": "Old converter",
+  "blurb": "Taken down. A bookmarked URL should explain rather than 404.",
+  "version": "1.0.0",
+  "status": "retired",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "main" },
+  "card": "info",
+  "kinds": ["fields", "error"],
+  "tags": ["bench"],
+  "links": [
+    { "label": "Use percentiles instead", "href": "/tool.html?id=percentiles" },
+    { "label": "Why it was retired", "href": "#retired-note" }
+  ],
+  "inputs": [
+    {
+      "id": "value",
+      "type": "number",
+      "label": "Value",
+      "description": "Unused. A retired tool does not run.",
+      "primary": true,
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "unit": "n"
+    }
+  ]
+}

@@ -1167,6 +1167,111 @@ describe("failure paths", () => {
 	});
 });
 
+describe("lifecycle status", () => {
+	it("refuses to activate a retired tool, explains, and renders its links", async () => {
+		const page = await browser.newPage();
+		const scripts: string[] = [];
+		page.on("request", (request) => {
+			if (request.resourceType() === "script") scripts.push(request.url());
+		});
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('#lifecycle tool-host[tool=retired][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-retired").waitFor();
+
+		const dump = await page.evaluate(() => {
+			const el = document.querySelector('#lifecycle tool-host[tool=retired][mode="page"]');
+			const root = el?.shadowRoot;
+			return {
+				status: el?.getAttribute("data-status") ?? "",
+				mark: root?.querySelector(".tb-mark")?.textContent ?? "",
+				retired: root?.querySelector(".tb-retired")?.textContent ?? "",
+				hasForm: Boolean(root?.querySelector(".tb-form")),
+				hasRun: Boolean(root?.querySelector(".tb-run")),
+				links: [...(root?.querySelectorAll(".tb-foot a") ?? [])].map((a) => ({
+					href: a.getAttribute("href"),
+					label: a.textContent,
+				})),
+			};
+		});
+		assert.equal(dump.status, "retired");
+		assert.match(dump.mark, /Retired/);
+		assert.match(dump.retired, /no longer runs/);
+		assert.match(dump.retired, /way onward/);
+		assert.equal(dump.hasForm, false, "a retired tool must not paint a form");
+		assert.equal(dump.hasRun, false, "or a Run button");
+		assert.deepEqual(dump.links, [
+			{ href: "/tool.html?id=percentiles", label: "Use percentiles instead" },
+			{ href: "#retired-note", label: "Why it was retired" },
+		]);
+		assert.equal(
+			scripts.filter((url) => /\/assets\/tool-retired-[^/]+\.js$/.test(url)).length,
+			0,
+			`a retired tool must not fetch its code: ${scripts.join(", ")}`,
+		);
+		await page.close();
+	});
+
+	it("does not treat a retired card as a live facade", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const card = page.locator("#lifecycle-cards tool-host[tool=retired]");
+		await card.scrollIntoViewIfNeeded();
+		await card.locator(".tb-retired").waitFor();
+		assert.equal(await card.locator(".tb-facade").count(), 0, "there is nothing to click");
+		assert.equal(await card.locator(".tb-form").count(), 0);
+		assert.match(String(await card.locator(".tb-retired").textContent()), /no longer runs/);
+		assert.equal(await card.locator('.tb-foot a[href="/tool.html?id=percentiles"]').count(), 1);
+		await page.close();
+	});
+
+	it("marks a deprecated tool so a host can style it, and still runs", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('#lifecycle tool-host[tool=deprecated][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-form").waitFor();
+
+		const before = await page.evaluate(() => {
+			const el = document.querySelector('#lifecycle tool-host[tool=deprecated][mode="page"]');
+			const mark = el?.shadowRoot?.querySelector(".tb-mark");
+			return {
+				status: el?.getAttribute("data-status") ?? "",
+				mark: mark?.textContent ?? "",
+				markColor: mark ? getComputedStyle(mark).color : "",
+			};
+		});
+		assert.equal(before.status, "deprecated", "data-status on the host is the hook a page styles against");
+		assert.match(before.mark, /Deprecated/);
+		assert.notEqual(before.markColor, "", "the marker is painted, not a class with no style");
+		assert.notEqual(before.markColor, "rgba(0, 0, 0, 0)", "and it is not transparent");
+
+		await host.locator(".tb-run").click();
+		await page.waitForFunction(() =>
+			document.querySelector('#lifecycle tool-host[tool=deprecated][mode="page"]')?.shadowRoot?.textContent?.includes("still runs"),
+		);
+		await page.close();
+	});
+
+	it("does not treat a deprecated tool as a live card", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		assert.equal(await page.locator("#cards tool-host[tool=deprecated]").count(), 0, "not among the live cards");
+		assert.equal(await page.locator("#cards tool-host[tool=retired]").count(), 0, "and retired is not there either");
+		assert.equal(await page.locator("#cards tool-host[tool=percentiles]").count(), 1, "live tools stay in the grid");
+
+		const card = page.locator("#lifecycle-cards tool-host[tool=deprecated]");
+		await card.scrollIntoViewIfNeeded();
+		await card.locator(".tb-mark").waitFor();
+		assert.equal(await card.locator(".tb-facade").count(), 0, "the compact slot is not a click-to-activate facade");
+		assert.equal(await card.locator(".tb-form").count(), 0, "and it does not open a form");
+		assert.match(String(await card.locator(".tb-mark").textContent()), /Deprecated/);
+		assert.equal(await card.getAttribute("data-status"), "deprecated");
+		assert.equal(await card.locator('a[href="/tool.html?id=deprecated"]').count(), 1, "the way to run it is the full page");
+		await page.close();
+	});
+});
+
 describe("accessibility wiring", () => {
 	it("names the facade button with the visible try/open hint, not just Open plus the tool name", async () => {
 		/*
