@@ -806,9 +806,11 @@ table cannot quietly stop being true.
 | A page with no tool | 0 bytes | Nothing is imported |
 | A card nobody opens | 0 bytes of tool code | The facade is markup |
 
-Where the budget is spent: about half the runtime chunk is the chart renderer and the stylesheet. If
-that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
-most tools never draw one.
+Where the budget is spent: this chunk is the runtime (element, runner, every renderer, and `styles.ts`)
+plus the bench's page wiring. Issue #12 asked whether `render/chart.ts` should move behind a dynamic
+import. Most tools never return `series`, the manifest already declares `kinds`, and the shape that
+would keep `render` synchronous is a pre-load of the chart chunk on activation for tools that list
+`series`.
 
 That chunk now measures 20,360 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
@@ -888,7 +890,8 @@ Known and accepted, with what each costs.
   describes.
 * **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup.
   That is milliseconds for tens of tools and would need revisiting at hundreds.
-* **No `series` renderer split.** See §13.
+* **The `series` renderer stays in the boot chunk.** A dynamic import of `render/chart.ts` saved
+  1,528 bytes gzip against a bar of about 3 KB. See §13.
 * **Node 24 or newer for development.** Tools and tests run as TypeScript with no build step, which is
   worth the floor.
 
