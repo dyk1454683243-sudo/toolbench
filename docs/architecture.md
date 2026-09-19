@@ -719,6 +719,9 @@ lockfile, typecheck, test, build, build the bench, install Chromium, run the bro
 that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current SDK and
 runtime. That is the mechanism behind the compatibility promise, not a nicety.
 
+`tests.yml` also runs `pnpm coverage` after `pnpm test` and writes the uncovered list to the job
+summary. It reports; it does not gate on a percentage. The browser suite is not in those numbers.
+
 ## 12. Testing strategy
 
 Four layers. Each catches something the others structurally cannot.
@@ -729,6 +732,12 @@ Four layers. Each catches something the others structurally cannot.
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
 | `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
+
+`pnpm coverage` runs the Node rows of that table with Node's built-in test coverage (the same
+collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not fail on a percentage. The browser row is not in those
+numbers: Playwright coverage is a different collection, and files the Node process never loads
+(`packages/runtime`, which needs a DOM) do not appear as 0%. Read the uncovered list once and file
+what it reveals.
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:

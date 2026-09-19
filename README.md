@@ -456,6 +456,7 @@ pnpm check          # typecheck, unit tests, every tool's fixtures
 pnpm new-tool <id>  # scaffold tools/<id>/ (four files, already green)
 pnpm bench          # the bench on http://localhost:5180
 pnpm test:bench     # the same bench, driven by Chrome
+pnpm coverage       # Node suite coverage: uncovered list, no threshold
 ```
 
 ## Documentation

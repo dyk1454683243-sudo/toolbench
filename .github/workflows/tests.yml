@@ -41,6 +41,14 @@ jobs:
         # than an intention. See docs/versioning.md.
         run: pnpm test
 
+      - name: Node coverage (report only, no threshold)
+        # Same suite as the step above, with V8 coverage. ⚠️ Do not add --test-coverage-lines,
+        # --test-coverage-branches, or --test-coverage-functions: those flags fail the job on a
+        # percentage, which produces tests written to satisfy the percentage. The useful output is
+        # the uncovered list, written to the job summary. This is the Node suite only. Browser
+        # coverage from pnpm test:bench is not in these numbers.
+        run: pnpm coverage
+
       - name: Changeset present for a package change
         # A change under packages/ that a consumer would notice needs a release note. Advisory on
         # purpose: plenty of package changes (comments, tests, internal renames) genuinely need no
