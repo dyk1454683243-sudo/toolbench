@@ -1202,7 +1202,7 @@ describe("lifecycle status", () => {
 		assert.equal(dump.hasRun, false, "or a Run button");
 		assert.deepEqual(dump.links, [
 			{ href: "/tool.html?id=percentiles", label: "Use percentiles instead" },
-			{ href: "#retired-note", label: "Why it was retired" },
+			{ href: "/index.html#retired-note", label: "Why it was retired" },
 		]);
 		assert.equal(
 			scripts.filter((url) => /\/assets\/tool-retired-[^/]+\.js$/.test(url)).length,
@@ -1267,7 +1267,13 @@ describe("lifecycle status", () => {
 		assert.equal(await card.locator(".tb-form").count(), 0, "and it does not open a form");
 		assert.match(String(await card.locator(".tb-mark").textContent()), /Deprecated/);
 		assert.equal(await card.getAttribute("data-status"), "deprecated");
-		assert.equal(await card.locator('a[href="/tool.html?id=deprecated"]').count(), 1, "the way to run it is the full page");
+		// The name is a link on every compact card. The foot is the extra affordance a
+		// deprecated card has instead of a click-to-activate facade.
+		assert.equal(
+			await card.locator('.tb-foot a[href="/tool.html?id=deprecated"]').count(),
+			1,
+			"the way to run it is the full page",
+		);
 		await page.close();
 	});
 });

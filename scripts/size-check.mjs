@@ -45,6 +45,12 @@ const BUDGETS = [
 	 * container and three rules so a card's chart keeps legible labels when the card is narrower than the
 	 * chart's own viewBox; and the `parts` attribute plumbing. 19_500 left 46 bytes of headroom, which is
 	 * not headroom.
+	 *
+	 * Raised from 20_500 to 21_500 in the commit that spent it. What it bought: the element honouring
+	 * `status` (retired refuses to activate and paints an explanation plus links; deprecated paints a
+	 * host-stylable marker and is not a live card), plus two bench fixture manifests. Those JSON files
+	 * land in this chunk because `registry.ts` imports every `tool.json` eagerly, the same way
+	 * percentiles' samples did. 20_500 left 21 bytes of headroom (20,521 measured), which is not headroom.
 	 */
 	{ label: "runtime + host wiring", pattern: /^boot-[^/]+\.js$/, budget: 19_500 },
 	/*

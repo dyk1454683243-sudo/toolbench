@@ -12,7 +12,7 @@
   "tags": ["bench"],
   "links": [
     { "label": "Use percentiles instead", "href": "/tool.html?id=percentiles" },
-    { "label": "Why it was retired", "href": "#retired-note" }
+    { "label": "Why it was retired", "href": "/index.html#retired-note" }
   ],
   "inputs": [
     {

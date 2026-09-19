@@ -355,7 +355,7 @@ export function validateManifest(raw: unknown): Manifest {
 	if (card === "live" && status !== "live") {
 		fail(
 			"card",
-			`only a live tool may be a live card — status "${status}" means it is on the way out or already gone, ` +
+			`only a live tool may be a live card: status "${status}" means it is on the way out or already gone, ` +
 				"and a compact slot must not present it as current",
 		);
 	}
