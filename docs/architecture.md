@@ -723,7 +723,7 @@ Four layers. Each catches something the others structurally cannot.
 | `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 79 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 24 |
+| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:
