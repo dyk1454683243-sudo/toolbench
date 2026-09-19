@@ -173,7 +173,7 @@ toolbench/
 │   ├── new-tool.mjs                scaffolds the four files under tools/<id>
 │   └── size-check.mjs              transfer budgets for the built bench
 ├── docs/                           this file, authoring, versioning
-└── .github/workflows/ci.yml        typecheck, tests, build, browser tests
+└── .github/workflows/             tests.yml, build.yml, release.yml
 ```
 
 ## 5. The contract
@@ -714,13 +714,19 @@ build: {
 
 ### 11.5 CI
 
-`.github/workflows/ci.yml`, on push to `main` and on every pull request: install with a frozen
-lockfile, typecheck, test, build, build the bench, install Chromium, run the browser tests. The step
-that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current SDK and
-runtime. That is the mechanism behind the compatibility promise, not a nicety.
+Three workflows, not one. `tests.yml` and `build.yml` run on push to `main` and on every pull request,
+and `release.yml` runs on push to `main` only. `tests.yml` installs with a frozen lockfile, typechecks
+and runs `pnpm test`; `build.yml` builds the packages, checks the published contents, builds the bench,
+checks the transfer budgets, installs Chromium and runs the browser suite. Both job names are required
+status checks on `main`, so renaming either one silently stops gating anything.
 
-`tests.yml` also runs `pnpm coverage` after `pnpm test` and writes the uncovered list to the job
-summary. It reports; it does not gate on a percentage. The browser suite is not in those numbers.
+The step that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current
+SDK and runtime. That is the mechanism behind the compatibility promise, not a nicety.
+
+`tests.yml` also runs `pnpm coverage` after `pnpm test` and writes the uncovered list to the job summary.
+It reports; it does not gate on a percentage, and the step is advisory so a report cannot block a merge.
+The globs come from the `test` script rather than a copy of it. The browser suite is not in those
+numbers, and the report says which files it never loaded for that reason.
 
 ## 12. Testing strategy
 
@@ -734,10 +740,16 @@ Four layers. Each catches something the others structurally cannot.
 | `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
 
 `pnpm coverage` runs the Node rows of that table with Node's built-in test coverage (the same
-collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not fail on a percentage. The browser row is not in those
-numbers: Playwright coverage is a different collection, and files the Node process never loads
-(`packages/runtime`, which needs a DOM) do not appear as 0%. Read the uncovered list once and file
-what it reveals.
+collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not
+fail on a percentage, and the CI step is advisory, so a report cannot hold a merge shut. It takes the
+globs from the `test` script rather than keeping a copy: a copy had already drifted by a whole test
+directory within a day of being written, and a coverage figure over a smaller suite than you think you
+are measuring reads as good news.
+
+The browser row is not in those numbers: Playwright coverage is a different collection, and files the
+Node process never loads (`packages/runtime`, which needs a DOM) do not appear as 0%. That is why the
+report ends with the list of files it never loaded, which is the honest caveat on a figure covering 10
+of 22 source files. Read that list once and file what it reveals.
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:

@@ -15,8 +15,8 @@
  * loads (the runtime, which needs a DOM) do not show as 0% rows either; they are listed
  * separately so a raw figure cannot be mistaken for "the runtime is well tested".
  */
-import { appendFileSync, globSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { appendFileSync, globSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { finished } from "node:stream/promises";
 import { run } from "node:test";
 import { spec } from "node:test/reporters";
@@ -24,8 +24,26 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
-/** Same globs as the `test` script. Coverage measures what those tests load. */
-const TEST_GLOBS = ["packages/**/*.test.ts", "tools/**/*.test.ts"];
+/**
+ * The globs the `test` script runs, read from `package.json` rather than copied.
+ *
+ * ⚠️ A copy had already drifted before this landed. `pnpm new-tool` added `scripts/**` as a third test
+ * location on the morning this was reviewed, so the copy measured 99 tests while `pnpm test` ran 112, and
+ * nothing said so: a coverage report over a smaller suite than you think you are measuring reads as good
+ * news. Deriving it means the two cannot disagree, and a shape this does not recognise is loud.
+ */
+function testGlobs() {
+	const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+	const script = pkg.scripts?.test;
+	if (typeof script !== "string") throw new Error("package.json has no `test` script to read globs from");
+	const globs = [...script.matchAll(/"([^"]+\*[^"]*)"/g)].map((m) => m[1]);
+	if (globs.length === 0) {
+		throw new Error(`could not read any quoted globs out of the test script: ${script}`);
+	}
+	return globs;
+}
+
+const TEST_GLOBS = testGlobs();
 
 const HEADER = `\
 Node test coverage
@@ -200,6 +218,12 @@ const stream = run({
 	cwd: ROOT,
 	globPatterns: TEST_GLOBS,
 	coverage: true,
+	/*
+	 * What is MEASURED, which is deliberately narrower than what is RUN. The suite is every test the `test`
+	 * script runs, including the ones under `scripts/`, because their imports exercise real SDK code. The
+	 * measurement covers the published packages and the tools, because those are what a consumer depends
+	 * on; repo tooling under `scripts/` is not something anyone installs.
+	 */
 	coverageIncludeGlobs: ["packages/**", "tools/**"],
 	coverageExcludeGlobs: ["**/*.test.ts"],
 	// No lineCoverage / branchCoverage / functionCoverage: a 0 default still looks

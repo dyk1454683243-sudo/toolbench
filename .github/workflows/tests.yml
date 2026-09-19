@@ -47,6 +47,12 @@ jobs:
         # percentage, which produces tests written to satisfy the percentage. The useful output is
         # the uncovered list, written to the job summary. This is the Node suite only. Browser
         # coverage from pnpm test:bench is not in these numbers.
+        #
+        # ⚠️ Advisory, like the changeset check below, and for a sharper reason: this job is a required
+        # check, so a report that can exit non-zero can block every merge. The script fails if Node ever
+        # stops emitting the coverage event in the shape it expects, which is a change in Node rather than
+        # a problem with the code under review. A report must not be able to hold the door shut.
+        continue-on-error: true
         run: pnpm coverage
 
       - name: Changeset present for a package change
