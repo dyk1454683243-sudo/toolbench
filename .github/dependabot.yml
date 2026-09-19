@@ -1,0 +1,39 @@
+# Weekly updates for GitHub Actions and npm devDependencies.
+#
+# release.yml holds id-token: write, so every action it runs is inside the npm
+# publish trust boundary. Workflows pin those actions by commit SHA. Dependabot
+# keeps the SHA and the version comment in step.
+#
+# Patch and minor updates share one PR per ecosystem. Majors stay separate so they
+# get read. The workspace is configured from the root: that is where pnpm-lock.yaml
+# and pnpm-workspace.yaml live.
+#
+# ⚠️ Both ecosystems cap open pull requests. Every action here is several majors
+# behind its upstream, so an ungrouped, uncapped first run opens one pull request
+# per action on top of whatever else is in flight. A queue nobody reads is the
+# same as no updates at all, and this file exists to be read.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      actions-patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    allow:
+      - dependency-type: "development"
+    groups:
+      npm-patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
