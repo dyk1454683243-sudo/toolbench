@@ -709,10 +709,11 @@ build: {
 
 ### 11.5 CI
 
-`.github/workflows/ci.yml`, on push to `main` and on every pull request: install with a frozen
-lockfile, typecheck, test, build, build the bench, install Chromium, run the browser tests. The step
-that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current SDK and
-runtime. That is the mechanism behind the compatibility promise, not a nicety.
+`.github/workflows/tests.yml` typechecks and runs every Node test. `.github/workflows/build.yml`
+builds the packages and the bench, checks transfer size, and runs the browser suite on a matrix of
+Chromium, Firefox, and WebKit. The step that matters most is `pnpm test`, because it runs **every**
+tool's fixtures against the current SDK and runtime. That is the mechanism behind the compatibility
+promise, not a nicety.
 
 ## 12. Testing strategy
 
@@ -723,7 +724,7 @@ Four layers. Each catches something the others structurally cannot.
 | `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 79 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 24 |
+| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 28 |
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:

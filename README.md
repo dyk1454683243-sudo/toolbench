@@ -417,6 +417,17 @@ budget, so these numbers cannot rot.
 In the browser the runtime needs custom elements, shadow DOM, `IntersectionObserver`, module workers
 and CSS container queries: Chrome 105+, Firefox 114+, Safari 16.4+.
 
+CI runs the bench suite against Playwright's Chromium, Firefox, and WebKit. That is how the list above
+is a guarantee rather than a claim. Locally, after `pnpm bench:build`:
+
+```sh
+pnpm exec playwright install firefox   # or webkit, or chromium
+PLAYWRIGHT_BROWSER=firefox pnpm test:bench
+```
+
+Unset, `pnpm test:bench` still opens system Chrome (`CHROME_CHANNEL`, default `chrome`). CI sets
+`CHROME_CHANNEL=chromium` so the runner uses the browser Playwright just installed.
+
 Two newer features are used with plain fallbacks in front of them, so a browser without either gets
 light colours rather than a broken layout: `light-dark()` for automatic dark mode (Chrome 123+,
 Firefox 120+, Safari 17.5+) and `color-mix()` for one focus ring. Anything older than the baseline
@@ -450,7 +461,7 @@ execute with no build step. Any bundler for the host site; the examples use Vite
 pnpm install
 pnpm check          # typecheck, unit tests, every tool's fixtures
 pnpm bench          # the bench on http://localhost:5180
-pnpm test:bench     # the same bench, driven by Chrome
+pnpm test:bench     # the same bench, in Chromium, Firefox, or WebKit
 ```
 
 ## Documentation
