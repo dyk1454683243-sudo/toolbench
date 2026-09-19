@@ -723,7 +723,7 @@ Four layers. Each catches something the others structurally cannot.
 | `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 79 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 24 |
+| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:
@@ -734,6 +734,7 @@ production build:
 * changing an input marks the result stale without re-running, and Run clears it;
 * a sample fills the form, sets several inputs at once, leaves the ones it does not name alone, keeps
   focus on the button that was pressed, and draws no row on a card;
+* Run attention is a fill change, not a ring, so it cannot be mistaken for `:focus-visible`;
 * all three modes, including two tools in one article with different threading;
 * a tool that spins forever is killed by the timeout, the page stays responsive, and the next run gets a
   fresh worker;
@@ -765,7 +766,7 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
-That chunk now measures 19,454 bytes against a 20,500 byte ceiling, so the next thing that costs real
+That chunk now measures 19,837 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
 table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
 bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
@@ -802,6 +803,7 @@ is here because the guards look arbitrary without it.
 | `chainFrom` used the module constant instead of the injected version | Migration chains silently did nothing | Migration tests inject synthetic versions and assert the steps ran, in order |
 | A sample could push a tool past its own `maxLength` | The field was declared on text inputs and enforced nowhere. It reaches the browser as the `maxlength` attribute, which constrains typing and nothing else, and filling a control from a sample assigns the value directly and walks straight past it, so the tool would have run on more characters than it declared it accepts | `validate.ts` rejects an over-long sample string, for the same reason it rejects an out-of-range sample number. A reader's typing still clamps: static data an author wrote can be a build error, a keystroke has nowhere else to go |
 | The additive-migration check accepted a step that rewrote an existing field | The probe fed each step a two-key manifest, so a step quietly rewriting anything outside those two keys still looked like the identity function. Confirmed by mutating the `2 → 3` step to rewrite `help`, which the old probe passed | The probe passes a whole manifest, stamped with the version of the step under test, and compares the entire key set. An allowlist rather than a denylist: asserting one key name was absent let a step inventing a misspelling of it through |
+| Run's stale-result cue looked like a focus ring | After a sample click the pressed pill kept focus and Run wore a soft ring hugging its edge, the same family of cue as `:focus-visible`. A keyboard reader could take the halo as "Run is where my keyboard is" and press Enter, which would re-fire the pill | A hotter fill derived from `--tb-accent`, not an outline or box-shadow. Browser test asserts the fill changes, that attention draws no ring, and that `:focus-visible` is still a 2px outline when both states are on |
 
 ## 15. Limitations
 
