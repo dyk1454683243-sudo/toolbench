@@ -42,6 +42,8 @@ nav.modes a { color: var(--accent); }
 a { color: var(--accent); }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.25rem; }
+.card-slot { display: flex; flex-direction: column; min-width: 0; }
+.source { font-size: 0.8rem; margin: 0.35rem 0 0; color: var(--muted); }
 .footnote { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
 
 /*
