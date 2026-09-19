@@ -800,8 +800,12 @@ production build:
 * a tool that spins forever is killed by the timeout, the page stays responsive, and the next run gets a
   fresh worker;
 * a crash reads differently from bad input, and bad input marks the right control invalid;
+<<<<<<< HEAD
 * a retired tool never fetches its code, explains, and renders its links; a deprecated tool is marked,
   still runs on its page, and is not a live card;
+=======
+* the landing page has no stress host, in-page nav stays relative, and each tool links at `tools/<id>/`;
+>>>>>>> 936451b (docs: record the six live-demo browser tests)
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
 * theming through custom properties only;
 * a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps
