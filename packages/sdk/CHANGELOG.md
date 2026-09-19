@@ -1,5 +1,13 @@
 # @toolbench/sdk
 
+## 0.5.1
+
+### Patch Changes
+
+- [#65](https://github.com/eknowledger/toolbench/pull/65) [`2e93266`](https://github.com/eknowledger/toolbench/commit/2e932660a52d305d6af8781cba49132dfc878f06) Thanks [@dyk1454683243-sudo](https://github.com/dyk1454683243-sudo)! - A card facade's accessible name includes its visible Try it / Open this tool hint (WCAG 2.5.3), and the title link's hit target is at least 24px tall (WCAG 2.5.8).
+
+- [#55](https://github.com/eknowledger/toolbench/pull/55) [`8631f93`](https://github.com/eknowledger/toolbench/commit/8631f938338410e21b03beead95765f0a30d8144) Thanks [@dyk1454683243-sudo](https://github.com/dyk1454683243-sudo)! - Run's stale-result cue is a hotter fill rather than a ring, so it no longer shares a visual language with `:focus-visible`.
+
 ## 0.5.0
 
 ### Minor Changes
