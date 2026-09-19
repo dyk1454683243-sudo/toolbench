@@ -69,12 +69,14 @@ function rel(abs) {
 
 /**
  * Source files the include globs would accept. Used to name files the Node
- * process never loaded, which V8 coverage cannot report as 0%.
+ * process never loaded, which V8 coverage cannot report as 0%. `dist/` and
+ * `.d.ts` are omitted: a typecheck emits them, and listing generated
+ * declarations as uncovered is noise.
  */
 function expectedSources() {
 	return globSync("{packages,tools}/**/*.ts", { cwd: ROOT })
 		.map((p) => p.replaceAll("\\", "/"))
-		.filter((p) => !p.endsWith(".test.ts"))
+		.filter((p) => !p.endsWith(".test.ts") && !p.endsWith(".d.ts") && !p.includes("/dist/"))
 		.sort();
 }
 
@@ -125,7 +127,8 @@ function uncoveredText(summary) {
 		text +=
 			"These files were never imported, so they do not appear as 0% rows. The runtime\n" +
 			"needs a DOM; `pnpm test:bench` is the layer that can see it, and that suite has\n" +
-			"no coverage numbers in this report.\n\n";
+			"no coverage numbers in this report. A barrel such as `packages/sdk/src/index.ts`\n" +
+			"is listed because tests import the modules directly.\n\n";
 		for (const p of missing) text += `  ${p}\n`;
 	}
 	text += "\nRead this list once and file what it reveals.\n";
@@ -182,8 +185,9 @@ function markdown(summary) {
 		lines.push("Every source file under `packages/` and `tools/` was imported.");
 	} else {
 		lines.push(
-			"These files were never imported, so they do not appear as 0% rows. They need a DOM.",
-			"`pnpm test:bench` is the layer that can see them; that suite has no coverage numbers here.",
+			"These files were never imported, so they do not appear as 0% rows.",
+			"The runtime needs a DOM; `pnpm test:bench` is the layer that can see it, and that suite has no coverage numbers here.",
+			"`packages/sdk/src/index.ts` is the public barrel: tests import the modules directly.",
 			"",
 		);
 		for (const p of missing) lines.push(`- \`${p}\``);
