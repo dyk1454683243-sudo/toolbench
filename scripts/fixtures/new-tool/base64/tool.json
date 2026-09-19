@@ -1,0 +1,25 @@
+{
+  "sdk": 3,
+  "id": "base64",
+  "name": "Base64",
+  "blurb": "A starter tool that counts characters in its input. Replace the function, the fixtures, and this sentence.",
+  "version": "0.0.0",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "main" },
+  "kinds": ["fields", "error"],
+  "card": "live",
+  "cardFields": 1,
+  "inputs": [
+    {
+      "id": "value",
+      "type": "textarea",
+      "label": "Input",
+      "description": "The text this starter measures. Replace the function before shipping.",
+      "primary": true,
+      "dir": "ltr",
+      "rows": 3,
+      "default": "hello"
+    }
+  ],
+  "help": "README.md"
+}

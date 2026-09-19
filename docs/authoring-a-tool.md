@@ -50,8 +50,16 @@ Three rules, and none of them are style preferences:
 
 ## 2. Walkthrough: build one
 
-A Base64 decoder. It is a good first tool because it has real errors, and it wants two result shapes at
-once.
+```sh
+pnpm new-tool base64
+```
+
+writes `tools/base64/` with the four files, already green under `pnpm check`: one input, one field of
+output, one fixture, and an `error` return with a fixture for it. Those last two are the parts people
+skip, which is why the template includes them rather than leaving them as an exercise.
+
+The rest of this section is what you replace that starter with. A Base64 decoder is a good first tool
+because it has real errors, and it wants two result shapes at once.
 
 ### Step 1: the manifest
 
