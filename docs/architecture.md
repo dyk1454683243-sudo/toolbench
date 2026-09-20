@@ -163,9 +163,11 @@ toolbench/
 │   ├── percentiles/                pure, main thread, group of fields and table
 │   └── queue-explorer/             pure, worker, group of series and fields, plus convergence tests
 ├── bench/
-│   ├── index.html                  card mode, theming, failure modes, lifecycle status
+│   ├── index.html                  card mode, theming, lifecycle status
+│   ├── failure.html                the failing tool, off the landing page
 │   ├── tool.html                   page mode
 │   ├── article.html                embed mode, two tools in prose
+│   ├── failure.html                stress fixture, kept off the front page
 │   ├── bench.test.ts               the runtime driven by Chrome against the built bench
 │   ├── fixtures/stress/            a tool that misbehaves on purpose
 │   ├── fixtures/retired/           a tool that must not run
@@ -175,7 +177,7 @@ toolbench/
 │   ├── new-tool.mjs                scaffolds the four files under tools/<id>
 │   └── size-check.mjs              transfer budgets for the built bench
 ├── docs/                           this file, authoring, versioning
-└── .github/workflows/             tests.yml, build.yml, release.yml
+└── .github/workflows/             tests.yml, build.yml, pages.yml, release.yml
 ```
 
 ## 5. The contract
@@ -716,21 +718,30 @@ build: {
 * **`worker.rollupOptions` needs the same treatment**, separately, because none of `build.rollupOptions`
   applies to the worker's build. Skipping it leaves the worker's copies anonymous, which is how a
   duplicate copy of every tool went unnoticed for a while.
+* **`base` must be `/toolbench/` on the Pages build.** A project Pages site is not at the origin root,
+  and without the prefix the HTML loads while every `/assets/...` request 404s. Local `pnpm bench`
+  keeps `/` unless `BENCH_BASE` is set. In-page nav is relative (`./tool.html`) for the same reason.
 
 ### 11.4 Artifacts
 
 | Command | Output |
 |---|---|
 | `pnpm build` | `packages/*/dist`: ESM plus `.d.ts` and source maps. No bundling; consumers bundle. |
-| `pnpm bench:build` | `bench/dist`: three HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk, and two bench-only chunks for the theme switch and the fixture manifests. Per-tool chunks and the fixture chunk are emitted twice, once for the worker pass, which §13 explains. |
+| `pnpm bench:build` | `bench/dist`: four HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk, the chart renderer, and two bench-only chunks for the theme switch and the fixture manifests. Per-tool chunks and the fixture chunk are emitted twice, once for the worker pass, which §13 explains. Local builds keep Vite `base` at `/`; the Pages deploy sets `BENCH_BASE=/toolbench/` so assets resolve under the project path. |
 
 ### 11.5 CI
 
-Three workflows, not one. `tests.yml` and `build.yml` run on push to `main` and on every pull request,
-and `release.yml` runs on push to `main` only. `tests.yml` installs with a frozen lockfile, typechecks
-and runs `pnpm test`; `build.yml` builds the packages, checks the published contents, builds the bench,
-checks the transfer budgets, and runs the browser suite on Chromium, Firefox and WebKit. Both job names are required
-status checks on `main`, so renaming either one silently stops gating anything.
+Four workflows, split so each badge answers one question:
+
+* `tests.yml`: typecheck, every Node-runnable test, and the coverage report.
+* `build.yml`: packages, published contents, the bench, transfer budgets, and the browser suite on Chromium, Firefox and WebKit.
+* `pages.yml`: builds the bench with `BENCH_BASE=/toolbench/` and, on `main`, publishes it to GitHub Pages. Enabling Pages, under Settings then Pages then Source: GitHub Actions, is a maintainer click; the workflow is already in the tree.
+* `release.yml`: version pull requests and the npm publish, after a human at both gates.
+
+⚠️ `types and unit tests` and `packages, bench, browser` are required status checks on `main`, so renaming
+either job silently stops it gating anything. The second is deliberately an unmatrixed job that waits on the
+three browser legs, because GitHub appends matrix values to a job's name and the required context would
+otherwise stop reporting. See the comment on that job.
 
 The step that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current
 SDK and runtime. That is the mechanism behind the compatibility promise, not a nicety.
@@ -751,7 +762,7 @@ Six layers. Each catches something the others structurally cannot.
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
 | `scripts/*.test.ts` | Node | The repo's own tooling, where getting it wrong is silent: that `pnpm new-tool` emits a tool which passes the harness unedited and matches its golden fixtures byte for byte, and that the fixture declares the current contract version rather than a literal | 20 |
-| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 49 |
+| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 55 |
 
 The Count column is measured, not maintained: `pnpm test:counts` runs each layer and reports what the table
 says beside what it found, and `--update` rewrites the cells. It exists because these numbers changed on
@@ -791,6 +802,7 @@ production build:
 * a crash reads differently from bad input, and bad input marks the right control invalid;
 * a retired tool never fetches its code, explains, and renders its links; a deprecated tool is marked,
   still runs on its page, and is not a live card;
+* the landing page has no stress host, in-page nav stays relative, and each tool links at `tools/<id>/`;
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
 * theming through custom properties only;
 * a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps

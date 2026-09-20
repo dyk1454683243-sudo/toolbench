@@ -1103,8 +1103,7 @@ describe("embed mode", () => {
 describe("failure paths", () => {
 	it("kills a tool that spins forever and says so", async () => {
 		const page = await browser.newPage();
-		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
-		// The page-mode one, at the bottom: the two cards above it show the same tool compactly.
+		await page.goto(`${BASE}/failure.html`, { waitUntil: "load" });
 		const host = page.locator('tool-host[tool=stress][mode="page"]');
 		await host.scrollIntoViewIfNeeded();
 		await host.locator(".tb-form").waitFor();
@@ -1135,7 +1134,7 @@ describe("failure paths", () => {
 
 	it("distinguishes a bug in the tool from bad input", async () => {
 		const page = await browser.newPage();
-		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		await page.goto(`${BASE}/failure.html`, { waitUntil: "load" });
 		const host = page.locator('tool-host[tool=stress][mode="page"]');
 		await host.scrollIntoViewIfNeeded();
 		await host.locator(".tb-form").waitFor();
@@ -1157,7 +1156,7 @@ describe("failure paths", () => {
 
 	it("says something useful when the tool does not exist", async () => {
 		const page = await browser.newPage();
-		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		await page.goto(`${BASE}/failure.html`, { waitUntil: "load" });
 		const text = await page.$eval("tool-host[tool=not-a-real-tool]", (host) =>
 			(host as HTMLElement & { shadowRoot: ShadowRoot }).shadowRoot.textContent,
 		);
@@ -1270,7 +1269,9 @@ describe("lifecycle status", () => {
 		// The name is a link on every compact card. The foot is the extra affordance a
 		// deprecated card has instead of a click-to-activate facade.
 		assert.equal(
-			await card.locator('.tb-foot a[href="/tool.html?id=deprecated"]').count(),
+			// Relative, not origin-absolute: the bench's pageUrl is `./tool.html` so the same markup works
+			// at `/` locally and under a project Pages path. An absolute href would 404 there.
+			await card.locator('.tb-foot a[href="./tool.html?id=deprecated"]').count(),
 			1,
 			"the way to run it is the full page",
 		);
@@ -1576,4 +1577,83 @@ describe("host code highlight hook", () => {
 			await page.close();
 		});
 	}
+
+});
+
+describe("live demo", () => {
+	it("keeps the stress fixture off the landing page", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		await page.waitForSelector("#cards tool-host[tool=percentiles]");
+		assert.equal(await page.locator("tool-host[tool=stress]").count(), 0, "a first visitor must not meet a deliberate crash");
+		const footnote = await page.locator(".footnote").textContent();
+		assert.match(String(footnote), /failure-modes/, "and the landing page has to say where that fixture went");
+		await page.close();
+	});
+
+	it("keeps in-bench navigation relative, so a project Pages path can prefix it", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const hrefs = await page.$$eval("header.top nav.modes a", (anchors) => anchors.map((a) => a.getAttribute("href")));
+		assert.ok(hrefs.length >= 3, "the three display-mode links are present");
+		for (const href of hrefs) {
+			assert.ok(
+				href && href.startsWith("./"),
+				`nav href must be relative to the current page, got ${href}`,
+			);
+		}
+		await page.close();
+	});
+
+	it("links every example tool on the landing page back to tools/<id>/", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		await page.waitForSelector("#cards .source a");
+		const links = await page.$$eval("#cards .source a", (anchors) =>
+			anchors.map((a) => ({ href: a.getAttribute("href"), text: a.textContent })),
+		);
+		assert.ok(links.length >= 3, `expected a source link per example card, got ${links.length}`);
+		for (const link of links) {
+			assert.match(
+				String(link.href),
+				/^https:\/\/github\.com\/eknowledger\/toolbench\/tree\/main\/tools\/[a-z0-9-]+\/$/,
+				`source href must be the tool directory, got ${link.href}`,
+			);
+			assert.match(String(link.text), /^Source: tools\/[a-z0-9-]+\/$/);
+		}
+		const seeded = await page.getAttribute('p.source[data-tool="percentiles"] a', "href");
+		assert.equal(seeded, "https://github.com/eknowledger/toolbench/tree/main/tools/percentiles/");
+		await page.close();
+	});
+
+	it("links the open tool page to its source directory", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.waitForSelector(".source a");
+		const href = await page.getAttribute(".source a", "href");
+		assert.equal(href, "https://github.com/eknowledger/toolbench/tree/main/tools/percentiles/");
+		await page.close();
+	});
+
+	it("links embedded tools to their source directories", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/article.html`, { waitUntil: "load" });
+		const hrefs = await page.$$eval(".source a", (anchors) => anchors.map((a) => a.getAttribute("href")));
+		assert.deepEqual(hrefs, [
+			"https://github.com/eknowledger/toolbench/tree/main/tools/percentiles/",
+			"https://github.com/eknowledger/toolbench/tree/main/tools/queue-explorer/",
+		]);
+		await page.close();
+	});
+
+	it("labels the stress fixture as intentional and points at bench/fixtures/stress/", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/failure.html`, { waitUntil: "load" });
+		await page.locator('tool-host[tool=stress][mode="page"]').waitFor();
+		const lead = await page.locator(".lead").textContent();
+		assert.match(String(lead), /on purpose/, "a visitor landing here has to be told this crash is the demo");
+		const href = await page.getAttribute('p.source[data-tool="stress"] a', "href");
+		assert.equal(href, "https://github.com/eknowledger/toolbench/tree/main/bench/fixtures/stress/");
+		await page.close();
+	});
 });

@@ -10,6 +10,8 @@
 **Ship small interactive tools on a website.**
 A tool is one function and one JSON file. Toolbench builds the form, runs it, and renders the result.
 
+**[Try it](https://eknowledger.github.io/toolbench/).** The live bench, no clone required.
+
 <!-- ⚠️ All badges in a group must sit on ONE source line. GitHub renders a single newline as <br>, so
      one badge per line stacks them vertically instead of flowing them inline. -->
 
@@ -38,6 +40,7 @@ The tool has no idea it is on the web. The website needs no framework.
 
 ## Contents
 
+- [Live demo](#live-demo)
 - [What it looks like](#what-it-looks-like)
 - [Why](#why)
 - [Install](#install)
@@ -52,6 +55,33 @@ The tool has no idea it is on the web. The website needs no framework.
 - [Non-goals](#non-goals)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
+
+## Live demo
+
+The same bench this repository builds is hosted at
+[eknowledger.github.io/toolbench](https://eknowledger.github.io/toolbench/). Four pages,
+because the display modes are four different situations and one page would let a bug in
+one hide behind another:
+
+| Page | What it shows |
+|---|---|
+| [Gallery](https://eknowledger.github.io/toolbench/) | The example tools as cards, each loading nothing until it is clicked. Below them, a highlighted code result and the two lifecycle states, `deprecated` and `retired`. |
+| [Full page](https://eknowledger.github.io/toolbench/tool.html?id=percentiles) | One tool on its own route, with its help text and its sample inputs. |
+| [In an article](https://eknowledger.github.io/toolbench/article.html) | Embed mode: two tools inside prose, inheriting the page's type. |
+| [When a tool fails](https://eknowledger.github.io/toolbench/failure.html) | A tool that spins forever, throws, or ignores cancellation, and a `tool` attribute naming an id that does not exist. |
+
+The badly behaved fixtures are on their own page, and the card grid filters them out along
+with anything not `live`. A first visitor to the demo should not meet a tool whose job is to
+time out, or be offered a retired one as though it were current.
+
+That is a GitHub **project** Pages site, so Vite `base` is `/toolbench/`. Local
+`pnpm bench` and `pnpm bench:build` keep `base` at `/`, which is why
+http://localhost:5180 still works. Set `BENCH_BASE=/toolbench/` to preview the
+deployed layout (the preview is then at http://localhost:4173/toolbench/).
+
+A maintainer enables the site once: **Settings → Pages → Source → GitHub Actions**.
+The workflow is [`.github/workflows/pages.yml`](.github/workflows/pages.yml). Until
+that toggle is flipped, the try-it URL 404s. Flipping it is the remaining click.
 
 ## What it looks like
 
@@ -483,7 +513,7 @@ execute with no build step. Any bundler for the host site; the examples use Vite
 | `packages/sdk` | The contract: types, manifest validation, version migration, fixture runner. No dependencies, no DOM. |
 | `packages/runtime` | `<tool-host>`: the element, the form, the renderers, the runner, the worker protocol. |
 | `tools/` | Three example tools (`percentiles`, `queue-explorer`, `utf8-bytes`), with fixtures and help. |
-| `bench/` | The test bench: three display modes, both threading modes, host theming, and a tool that fails on purpose. |
+| `bench/` | The test bench, also the live demo: three display modes, both threading modes, host theming, and a tool that fails on purpose (on its own page). |
 | `docs/` | Architecture, authoring, versioning. |
 
 ```sh
@@ -493,6 +523,7 @@ pnpm new-tool <id>  # scaffold tools/<id>/ (four files, already green)
 pnpm bench          # the bench on http://localhost:5180
 pnpm test:bench     # the same bench, in Chromium, Firefox, or WebKit
 pnpm coverage       # Node suite coverage: uncovered list, no threshold
+# live: https://eknowledger.github.io/toolbench/
 ```
 
 ## Documentation

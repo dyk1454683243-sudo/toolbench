@@ -11,9 +11,9 @@
 		<header class="top">
 			<h1>Toolbench bench</h1>
 			<nav class="modes">
-				<a href="/index.html" aria-current="page">card</a>
-				<a href="/tool.html?id=percentiles">page</a>
-				<a href="/article.html">in an article</a>
+				<a href="./index.html" aria-current="page">card</a>
+				<a href="./tool.html?id=percentiles">page</a>
+				<a href="./article.html">in an article</a>
 			</nav>
 		</header>
 		<p class="lead">
@@ -25,6 +25,8 @@
 		<p class="note">
 			A card is a facade: it shows the tool's name and one input, and it downloads no tool code until
 			you press it. Open the network panel, then click one — the chunk arrives on the click.
+			Each card links to <code>tools/&lt;id&gt;/</code> so the "one function and one JSON file" claim
+			is a directory you can open, not a sentence.
 		</p>
 		<div class="grid" id="cards"></div>
 
@@ -45,6 +47,7 @@
 			drift from the tool the way hand-written JSON does.
 		</p>
 		<tool-host tool="percentiles" mode="card" data-seed></tool-host>
+		<p class="source" data-tool="percentiles"><a href="https://github.com/eknowledger/toolbench/tree/main/tools/percentiles/" rel="noopener">Source: tools/percentiles/</a></p>
 
 		<h3>A card with room for two parts</h3>
 		<p>
@@ -54,6 +57,7 @@
 			rate without a duration sizes nothing.
 		</p>
 		<tool-host tool="queue-explorer" mode="card" parts="2" data-seed></tool-host>
+		<p class="source" data-tool="queue-explorer"><a href="https://github.com/eknowledger/toolbench/tree/main/tools/queue-explorer/" rel="noopener">Source: tools/queue-explorer/</a></p>
 
 		<h2>Bytes — contract version 2</h2>
 		<p class="note">
@@ -64,15 +68,8 @@
 			what, and tells a screen reader nothing.
 		</p>
 		<tool-host tool="utf8-bytes" mode="page"></tool-host>
+		<p class="source" data-tool="utf8-bytes"><a href="https://github.com/eknowledger/toolbench/tree/main/tools/utf8-bytes/" rel="noopener">Source: tools/utf8-bytes/</a></p>
 
-		<h2>What failure looks like</h2>
-		<p class="note">
-			A tool that misbehaves on purpose. <strong>Spin forever</strong> ignores its abort signal, so only
-			the worker timeout can stop it; <strong>throw</strong> is a bug in the tool, which reads
-			differently from <strong>reject the input</strong>, which is the tool working correctly. The page
-			stays responsive throughout — that is what worker mode buys.
-		</p>
-		<tool-host tool="stress" mode="page"></tool-host>
 
 		<h2>Code highlighting: a host hook</h2>
 		<p class="note">
@@ -105,8 +102,10 @@
 		<tool-host tool="not-a-real-tool" mode="card"></tool-host>
 
 		<p class="footnote">
-			Three pages, one runtime: this is <code>mode="card"</code>. The others are
+			Three display modes, one runtime: this is <code>mode="card"</code>. The others are
 			<code>mode="page"</code> and <code>mode="embed"</code>.
+			The <a href="./failure.html">failure-modes page</a> is a fixture that times out and crashes on
+			purpose, kept off this page so a first visit is not a deliberate error.
 		</p>
 	</div>
 	<script type="module" src="/src/gallery.ts"></script>

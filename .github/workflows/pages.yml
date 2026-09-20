@@ -1,0 +1,92 @@
+# Publish the bench as a live demo on GitHub Pages.
+#
+# `pnpm bench:build` already emits a static site. This workflow builds it with
+# `BENCH_BASE=/toolbench/` so assets resolve under the project Pages path
+# https://eknowledger.github.io/toolbench/, then uploads and deploys that output.
+#
+# Enabling Pages itself is a maintainer click: Settings → Pages → Source →
+# GitHub Actions. Until that is set, the deploy job fails and the URL 404s. The
+# workflow is already in the tree, so that toggle is the remaining step.
+#
+# Pull requests build with the Pages base (so a missing prefix fails here) but
+# do not deploy. A fork PR must not publish the upstream demo.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  # Never cancel a deploy that has already started writing the live site.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: bench for Pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the packages
+        # ⚠️ Before the bench, and not for completeness. `bench/vite.config.ts` imports @toolbench/sdk
+        # through its package name, which resolves to packages/sdk/dist, and this repository does not
+        # keep dist in git. Without this step the config itself fails to load with "Failed to resolve
+        # entry for package @toolbench/sdk", which names the package and not the missing build.
+        #
+        # Second time this bit in one day: the browser matrix in build.yml hit it by downloading only
+        # bench/dist and skipping the workspace build. Serving or building the bench needs the packages.
+        run: pnpm build
+
+      - name: Build the bench for the project Pages path
+        # Local `pnpm bench:build` keeps base `/` so :4173 and the browser suite
+        # stay put. This job is the one that would 404 without the prefix.
+        env:
+          BENCH_BASE: /toolbench/
+        run: pnpm bench:build
+
+      - name: Confirm the Pages base landed in the markup
+        # An allowlist: the built index must request assets under /toolbench/,
+        # and in-page nav must stay relative so the prefix is not required twice.
+        run: |
+          grep -F '/toolbench/assets/' bench/dist/index.html
+          grep -F 'href="./tool.html' bench/dist/index.html
+          grep -F 'href="./failure.html' bench/dist/index.html
+          test -f bench/dist/failure.html
+          test -f bench/dist/tool.html
+          test -f bench/dist/article.html
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+        if: github.ref == 'refs/heads/main'
+
+      - name: Upload the static bench
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: bench/dist
+
+  deploy:
+    name: publish to Pages
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
