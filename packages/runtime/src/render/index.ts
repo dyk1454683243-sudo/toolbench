@@ -14,7 +14,41 @@
  */
 import type { ByteRange, Cell, Field, Output } from "@toolbench/sdk";
 import { el } from "../dom.ts";
-import { renderChart } from "./chart.ts";
+
+/*
+ * ⚠️ The chart renderer is the one renderer this module does not import.
+ *
+ * It is about 1.5 KB gzipped, measured, and most tools never return a `series`. Importing it here put
+ * that cost in the chunk every page pays, which issue #12 asked about and #76 measured at 1,521 bytes.
+ *
+ * `render` stays SYNCHRONOUS, which is the property that made this worth doing at all: making it async
+ * would have rippled into the facade path, the seed path and every caller. Instead the module is loaded
+ * before anything can need it. `<tool-host>` awaits `loadChartRenderer()` during `#prepare` when the
+ * manifest declares `series` in `kinds`, so by the time any result is drawn the function is already here.
+ *
+ * The fallback matters because `kinds` is a declaration a tool can get wrong. If a series arrives without
+ * the module, `render` throws `ChartRendererMissing`, which `#draw` catches, loads, and redraws. One frame
+ * later rather than never.
+ */
+let renderChart: typeof import("./chart.ts").renderChart | undefined;
+
+/** Thrown when a `series` reaches `render` before the chart chunk has loaded. Caught by `#draw`. */
+export class ChartRendererMissing extends Error {
+	constructor() {
+		super("the chart renderer has not loaded yet");
+		this.name = "ChartRendererMissing";
+	}
+}
+
+/** Loads the chart chunk. Idempotent, and awaited by `<tool-host>` for tools that declare `series`. */
+export async function loadChartRenderer(): Promise<void> {
+	renderChart ??= (await import("./chart.ts")).renderChart;
+}
+
+/** Whether a `series` can be drawn right now, without loading anything. */
+export function chartRendererReady(): boolean {
+	return renderChart !== undefined;
+}
 
 export interface RenderOptions {
 	/** Compact mode: fewer fields, no captions, no chart legend. */
@@ -28,6 +62,11 @@ export interface RenderOptions {
 	 * about the tool: the same tool is a small card in a sidebar and a large one leading a section.
 	 */
 	cardParts?: number;
+	/**
+	 * Host-supplied highlighter for `code` results. Must return a `Node`: a string would tempt
+	 * `innerHTML`, which this package does not use. Omit it and the source stays readable plain text.
+	 */
+	highlight?: (source: string, lang: string) => Node;
 }
 
 export function render(output: Output, options: RenderOptions = {}): HTMLElement {
@@ -37,11 +76,13 @@ export function render(output: Output, options: RenderOptions = {}): HTMLElement
 		case "text":
 			return renderText(output.text, output.mono === true);
 		case "code":
-			return renderCode(output.lang, output.source);
+			return renderCode(output.lang, output.source, options.highlight);
 		case "table":
 			return renderTable(output, options);
-		case "series":
+		case "series": {
+			if (renderChart === undefined) throw new ChartRendererMissing();
 			return renderChart(output.chart, options);
+		}
 		case "group": {
 			/*
 			 * ⚠️ A compact slot renders the FIRST FEW parts, and says how many it left out.
@@ -141,15 +182,27 @@ function renderText(text: string, mono: boolean): HTMLElement {
 	return el("div", { class: "tb-out-text" }, el(mono ? "pre" : "p", { class: mono ? "tb-mono" : "" }, text));
 }
 
-function renderCode(lang: string, source: string): HTMLElement {
+function renderCode(lang: string, source: string, highlight?: (source: string, lang: string) => Node): HTMLElement {
 	/*
-	 * No syntax highlighting, deliberately. A highlighter is a large dependency and a host site
-	 * usually already has one; the `data-lang` hook lets it style this block if it wants to.
+	 * No bundled highlighter, deliberately. A highlighter is a large dependency and a host site
+	 * usually already has one. `data-lang` stays for CSS. If the host passed `highlight`, that
+	 * function's Node replaces the text node inside `<code>`. The return type is Node on purpose:
+	 * a string would need innerHTML, which SECURITY.md forbids.
 	 */
+	let body: Node | string = source;
+	if (highlight) {
+		try {
+			const node = highlight(source, lang);
+			if (node instanceof Node) body = node;
+		} catch {
+			// A hook that throws must not blank the result. Plain text is still readable.
+			body = source;
+		}
+	}
 	return el(
 		"div",
 		{ class: "tb-out-code", "data-lang": lang },
-		el("pre", {}, el("code", { class: `language-${lang}` }, source)),
+		el("pre", {}, el("code", { class: `language-${lang}` }, body)),
 	);
 }
 

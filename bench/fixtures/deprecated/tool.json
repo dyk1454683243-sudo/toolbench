@@ -1,0 +1,27 @@
+{
+  "sdk": 1,
+  "id": "deprecated",
+  "name": "Legacy converter",
+  "blurb": "Still works, but a better tool has replaced it.",
+  "version": "1.0.0",
+  "status": "deprecated",
+  "capabilities": ["pure"],
+  "runtime": { "entry": "index.ts", "thread": "main" },
+  "card": "info",
+  "kinds": ["fields", "error"],
+  "tags": ["bench"],
+  "links": [{ "label": "Use percentiles instead", "href": "/tool.html?id=percentiles" }],
+  "inputs": [
+    {
+      "id": "value",
+      "type": "number",
+      "label": "Value",
+      "description": "Any number in range. The result repeats it, so a test can see that the tool still ran.",
+      "primary": true,
+      "default": 1,
+      "min": 0,
+      "max": 10,
+      "unit": "units"
+    }
+  ]
+}

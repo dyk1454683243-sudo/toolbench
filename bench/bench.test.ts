@@ -18,13 +18,51 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { after, before, describe, it } from "node:test";
-import { type Browser, chromium } from "playwright";
+import { type Browser, type BrowserType, chromium, firefox, webkit } from "playwright";
 
 const PORT = 4173;
 const BASE = `http://localhost:${PORT}`;
 
+const ENGINES = { chromium, firefox, webkit } as const;
+type EngineName = keyof typeof ENGINES;
+
+/**
+ * Which engine the suite launches. CI sets this per matrix leg. Unset still means Chromium, so
+ * `pnpm test:bench` locally keeps working, and `CHROME_CHANNEL` still picks system Chrome vs the
+ * bundled Chromium.
+ */
+function requestedEngine(): EngineName {
+	/*
+	 * ⚠️ Required under CI, defaulted only locally.
+	 *
+	 * Defaulting everywhere hides the failure that matters: drop `PLAYWRIGHT_BROWSER` from the workflow and
+	 * all three legs quietly run Chromium, three green checks report cross-engine coverage that does not
+	 * exist, and the assertion below still passes because both the default and the expectation collapse to
+	 * the same value. Under CI an unset variable is a configuration bug, so it is loud.
+	 */
+	const raw = process.env.PLAYWRIGHT_BROWSER?.toLowerCase();
+	if (raw === undefined) {
+		if (process.env.CI) {
+			throw new Error("PLAYWRIGHT_BROWSER is unset under CI. Every leg would run Chromium and report as if it had not.");
+		}
+		return "chromium";
+	}
+	if (raw in ENGINES) return raw as EngineName;
+	throw new Error(`Unknown PLAYWRIGHT_BROWSER="${process.env.PLAYWRIGHT_BROWSER}". Use chromium, firefox, or webkit.`);
+}
+
+async function launchBrowser(): Promise<Browser> {
+	const name = requestedEngine();
+	const engine: BrowserType = ENGINES[name];
+	if (name === "chromium") {
+		return engine.launch({ channel: process.env.CHROME_CHANNEL ?? "chrome" });
+	}
+	return engine.launch();
+}
+
 let server: ChildProcess | undefined;
 let browser: Browser;
+let engineName: EngineName;
 
 before(async () => {
 	server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
@@ -44,12 +82,19 @@ before(async () => {
 		if (Date.now() > deadline) throw new Error("vite preview did not start");
 		await new Promise((r) => setTimeout(r, 150));
 	}
-	browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL ?? "chrome" });
+	engineName = requestedEngine();
+	browser = await launchBrowser();
 });
 
 after(async () => {
 	await browser?.close();
 	server?.kill("SIGTERM");
+});
+
+describe("the engine under test", () => {
+	it("launched the browser PLAYWRIGHT_BROWSER asked for", () => {
+		assert.equal(browser.browserType().name(), engineName);
+	});
 });
 
 describe("card mode — the facade", () => {
@@ -90,11 +135,16 @@ describe("card mode — the facade", () => {
 		 *
 		 * queue-explorer declares thread: "worker", so running it must fetch the worker copy and must
 		 * NOT fetch the main-thread copy. Fetching both would mean the code was parsed twice.
+		 *
+		 * ⚠️ Playwright's page request listener does not classify worker-module imports the same way
+		 * on every engine. Measured against this suite: Chromium emits them as `script`, WebKit as
+		 * `xhr`, and Firefox emits the worker entry but not the inner `import()`. The worker's own
+		 * performance timeline lists the chunk on all three, so that is the observation that holds.
 		 */
 		const page = await browser.newPage();
-		const scripts: string[] = [];
+		const urls: string[] = [];
 		page.on("request", (request) => {
-			if (request.resourceType() === "script") scripts.push(request.url());
+			urls.push(request.url());
 		});
 		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
 		await page.locator("#host").scrollIntoViewIfNeeded();
@@ -103,18 +153,26 @@ describe("card mode — the facade", () => {
 			timeout: 15_000,
 		});
 
-		const loaded = (re: RegExp) => scripts.filter((url) => re.test(url));
+		const workerUrls: string[] = [];
+		for (const worker of page.workers()) {
+			workerUrls.push(
+				...(await worker.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name))),
+			);
+		}
+
+		const loaded = (list: string[], re: RegExp) => list.filter((url) => re.test(url));
+		const workerTool = /\/assets\/worker-tool-queue-explorer-[^/]+\.js$/;
 		assert.equal(
-			loaded(/\/assets\/worker-tool-queue-explorer-[^/]+\.js$/).length,
+			loaded(workerUrls, workerTool).length,
 			1,
-			`the worker's copy of the tool should be fetched exactly once: ${scripts.join(", ")}`,
+			`the worker must import its copy of the tool exactly once: page=[${urls.join(", ")}] worker=[${workerUrls.join(", ")}]`,
 		);
 		assert.equal(
-			loaded(/\/assets\/tool-queue-explorer-[^/]+\.js$/).length,
+			loaded(urls, /\/assets\/tool-queue-explorer-[^/]+\.js$/).length,
 			0,
 			"the main-thread copy must never be fetched for a worker-mode tool",
 		);
-		assert.equal(loaded(/\/assets\/index-[^/]+\.js$/).length, 0, "no tool should load under an anonymous chunk name");
+		assert.equal(loaded(urls, /\/assets\/index-[^/]+\.js$/).length, 0, "no tool should load under an anonymous chunk name");
 		await page.close();
 	});
 
@@ -662,6 +720,306 @@ describe("sample inputs — contract version 3", () => {
 	});
 });
 
+describe("host values and run — runtime API", () => {
+	/*
+	 * A host example button cannot reach the form: it lives in the shadow root. `values` and `run()`
+	 * are the primitive that makes those buttons possible without every tool reimplementing examples
+	 * as a select. Node can prove coerce and the partial merge. Whether a write reaches the controls,
+	 * whether it runs the tool, whether a still-closed card accepts it, and whether `run()` after it
+	 * produces a result are browser facts.
+	 */
+	type HostApi = HTMLElement & {
+		values: Record<string, string | number | boolean>;
+		run: (options?: { focus?: boolean }) => Promise<void>;
+	};
+
+	/*
+	 * Focus follows the person who acted. A reader pressing Run is asking to be taken to the answer; a page
+	 * calling run() on load is not, and moving focus there drops the reader out of whatever they were doing.
+	 * Asserted in both directions, because the default is the one a host gets by accident.
+	 */
+	it("leaves focus alone when the host runs it, and moves it only when asked", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const quiet = await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot as ShadowRoot;
+			(root.querySelector(".tb-textarea") as HTMLTextAreaElement).focus();
+			const before = root.activeElement?.className ?? "";
+			await host.run();
+			return { before, after: root.activeElement?.className ?? "", drawn: (root.querySelector(".tb-output")?.children.length ?? 0) > 0 };
+		});
+		assert.ok(quiet.drawn, "the host's run must still produce a result");
+		assert.equal(quiet.after, quiet.before, `run() must not move focus: ${quiet.before} -> ${quiet.after}`);
+
+		const asked = await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot as ShadowRoot;
+			(root.querySelector(".tb-textarea") as HTMLTextAreaElement).focus();
+			await host.run({ focus: true });
+			return root.activeElement?.className ?? "";
+		});
+		assert.match(asked, /tb-output/, "run({ focus: true }) is how a host opts into being taken to the result");
+		await page.close();
+	});
+
+	it("applies a partial set and does not run the tool", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		const before = await page.locator("#host >> .tb-textarea").inputValue();
+
+		const after = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { method: "linear" };
+			const root = host.shadowRoot;
+			return {
+				values: (root?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "",
+				method: (root?.querySelector(".tb-select") as HTMLSelectElement | null)?.value ?? "",
+				results: root?.querySelector(".tb-output")?.children.length ?? -1,
+				snapshot: { ...host.values },
+			};
+		});
+
+		assert.equal(after.values, before, "an input the host did not name keeps its current value");
+		assert.equal(after.method, "linear", "the named input is written into the live control");
+		assert.equal(after.results, 0, "setting values must not run the tool");
+		assert.equal(after.snapshot.method, "linear", "the getter returns the applied value");
+		assert.equal(after.snapshot.values, before, "and the input the host left alone");
+		await page.close();
+	});
+
+	it("clamps and refuses the way typing does", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const clamped = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { arrivals: 99999, service: -10, samples: 50, seed: 42 };
+			const root = host.shadowRoot;
+			const numberAt = (id: string) => Number((root?.querySelector(`#${id}`) as HTMLInputElement | null)?.value);
+			return {
+				arrivals: numberAt("in-arrivals"),
+				service: numberAt("in-service"),
+				samples: numberAt("in-samples"),
+				seed: numberAt("in-seed"),
+				fromGetter: host.values,
+			};
+		});
+
+		assert.equal(clamped.arrivals, 5000, "a number above max clamps, it is not trusted");
+		assert.equal(clamped.service, 0.1, "a number below min clamps");
+		assert.equal(clamped.samples, 1000, "same for a different input's min");
+		assert.equal(clamped.seed, 42, "an in-range value is kept");
+		assert.equal(clamped.fromGetter.arrivals, 5000, "the getter sees the clamped value, not the raw one");
+		await page.close();
+	});
+
+	it("refuses an invalid select and truncates text to maxLength", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const select = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { method: "bogus" };
+			return (host.shadowRoot?.querySelector(".tb-select") as HTMLSelectElement | null)?.value ?? "";
+		});
+		assert.equal(select, "nearest", "an option the tool does not declare falls back to the default");
+
+		await page.goto(`${BASE}/tool.html?id=utf8-bytes`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		const truncated = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { text: "x".repeat(600) };
+			return ((host.shadowRoot?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "").length;
+		});
+		assert.equal(truncated, 512, "a string longer than maxLength is cut, the same limit typing hits");
+		await page.close();
+	});
+
+	it("marks an existing result stale and leaves it on screen", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.locator("#host >> .tb-run").click();
+		await page.locator("#host >> .tb-out-fields").first().waitFor({ timeout: 15_000 });
+		const drawn = await page.locator("#host >> .tb-output").textContent();
+
+		await page.locator("#host").evaluate((el) => {
+			(el as HostApi).values = { values: "1 2 3 4 5" };
+		});
+		await page.waitForTimeout(400);
+
+		assert.equal(await page.locator("#host >> .tb-output[data-stale]").count(), 1, "the old result belongs to the old inputs");
+		assert.equal(await page.locator("#host >> .tb-run[data-attention]").count(), 1, "and Run is where the reader has to go next");
+		assert.equal(
+			await page.locator("#host >> .tb-output").textContent(),
+			drawn,
+			"setting values must not re-run: the previous result stays until the host calls run()",
+		);
+		assert.match(String(await page.locator("#host >> .tb-status").textContent()), /inputs changed/);
+		await page.close();
+	});
+
+	it("prefills a card before anyone opens it", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const card = page.locator("tool-host[tool=percentiles][data-seed]");
+		await card.waitFor();
+
+		const before = await card.evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { values: "1 2 3 4 5", method: "linear" };
+			return {
+				hasForm: Boolean(host.shadowRoot?.querySelector(".tb-form")),
+				snapshot: { ...host.values },
+			};
+		});
+		assert.equal(before.hasForm, false, "the card is still a facade");
+		assert.equal(before.snapshot.values, "1 2 3 4 5", "the getter already reflects the prefill");
+
+		await card.locator(".tb-facade").click();
+		await card.locator(".tb-form").waitFor();
+
+		const after = await card.evaluate((el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot;
+			return {
+				values: (root?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "",
+				method: host.values.method,
+				hasSelect: Boolean(root?.querySelector(".tb-select")),
+				stale: Boolean(root?.querySelector(".tb-output[data-stale]")),
+				status: root?.querySelector(".tb-status")?.textContent ?? "",
+			};
+		});
+		assert.equal(after.values, "1 2 3 4 5", "the form opens already filled");
+		assert.equal(after.hasSelect, false, "a card does not render the non-primary select");
+		assert.equal(after.method, "linear", "the prefill still lands on the hidden input, which is what Run will use");
+		assert.equal(after.stale, true, "the seeded default result is stale: it is not this form's answer");
+		assert.match(after.status, /inputs changed/);
+		await page.close();
+	});
+
+	it("runs when the host calls run() after setting values, including on a closed card", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const card = page.locator("tool-host[tool=utf8-bytes]").first();
+		await card.waitFor();
+
+		await card.evaluate(async (el) => {
+			const host = el as HostApi;
+			host.values = { text: "abc" };
+			await host.run();
+		});
+		await card.locator(".tb-output > *").first().waitFor({ timeout: 15_000 });
+
+		const result = await card.evaluate((el) => {
+			const root = (el as HTMLElement).shadowRoot;
+			return {
+				text: (root?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "",
+				stale: Boolean(root?.querySelector(".tb-output[data-stale]")),
+				fields: [...(root?.querySelectorAll(".tb-field") ?? [])].map((f) => f.textContent?.replace(/\s+/g, " ").trim()),
+			};
+		});
+		assert.equal(result.text, "abc", "run() used the prefilled values, not the defaults");
+		assert.equal(result.stale, false, "a completed run is current");
+		assert.ok(
+			result.fields.some((f) => f?.includes("3")),
+			`the result should be for "abc" (3 bytes), got: ${result.fields.join(" | ")}`,
+		);
+		await page.close();
+	});
+
+	it("still works on a tool that ships no samples", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=utf8-bytes`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		assert.equal(await page.locator("#host >> .tb-samples").count(), 0, "utf8-bytes is the plain path: no sample row");
+
+		await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			host.values = { text: "A" };
+			await host.run();
+		});
+		await page.locator("#host >> .tb-output > *").first().waitFor({ timeout: 15_000 });
+		const text = await page.locator("#host >> .tb-textarea").inputValue();
+		assert.equal(text, "A");
+		assert.ok((await page.locator("#host >> .tb-output > *").count()) > 0, "run() after values still produces a result");
+		await page.close();
+	});
+});
+
+describe("the chart renderer is its own chunk", () => {
+	/*
+	 * The saving is only real if the chunk stays unfetched for pages that never draw a chart, and the
+	 * feature only works if it is fetched before one is drawn. Both halves are browser facts: a Node test
+	 * cannot see a network request, and the whole point of the split is what does not arrive.
+	 */
+	const chartChunk = /\/assets\/chart-[^/]+\.js$/;
+
+	it("is not fetched by a tool that draws no chart", async () => {
+		const page = await browser.newPage();
+		const scripts: string[] = [];
+		page.on("request", (request) => {
+			if (request.resourceType() === "script") scripts.push(request.url());
+		});
+		// percentiles returns fields and a table. Its manifest does not list `series`, so nothing should
+		// pull the chart renderer in, before or after a run.
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		await page.locator("#host >> .tb-run").click();
+		await page.locator("#host >> .tb-out-fields").first().waitFor({ timeout: 15_000 });
+
+		assert.deepEqual(
+			scripts.filter((url) => chartChunk.test(url)),
+			[],
+			"a page with no chart must not download the chart renderer",
+		);
+		await page.close();
+	});
+
+	it("is fetched before a chart tool paints, so the draw stays synchronous", async () => {
+		const page = await browser.newPage();
+		const scripts: string[] = [];
+		page.on("request", (request) => {
+			if (request.resourceType() === "script") scripts.push(request.url());
+		});
+		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		// Fetched on preparation, before anything is run: the manifest declares `series`, and `#prepare`
+		// awaits the chunk so `render` never has to be asynchronous.
+		assert.equal(
+			scripts.filter((url) => chartChunk.test(url)).length,
+			1,
+			`the chart chunk should arrive once, before the first run: ${scripts.join(", ")}`,
+		);
+
+		await page.locator("#host >> .tb-run").click();
+		await page.waitForFunction(() => document.querySelector("#host")?.shadowRoot?.querySelector(".tb-out-chart svg"), null, {
+			timeout: 15_000,
+		});
+		assert.equal(
+			scripts.filter((url) => chartChunk.test(url)).length,
+			1,
+			"and exactly once: the module is cached, not re-imported per draw",
+		);
+		await page.close();
+	});
+});
+
 describe("page mode", () => {
 	it("renders the chart and keeps it — a late progress frame must not overwrite the result", async () => {
 		const page = await browser.newPage();
@@ -805,6 +1163,117 @@ describe("failure paths", () => {
 		);
 		assert.match(String(text), /No tool with id "not-a-real-tool"/);
 		assert.match(String(text), /percentiles/, "and it should list what does exist");
+		await page.close();
+	});
+});
+
+describe("lifecycle status", () => {
+	it("refuses to activate a retired tool, explains, and renders its links", async () => {
+		const page = await browser.newPage();
+		const scripts: string[] = [];
+		page.on("request", (request) => {
+			if (request.resourceType() === "script") scripts.push(request.url());
+		});
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('#lifecycle tool-host[tool=retired][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-retired").waitFor();
+
+		const dump = await page.evaluate(() => {
+			const el = document.querySelector('#lifecycle tool-host[tool=retired][mode="page"]');
+			const root = el?.shadowRoot;
+			return {
+				status: el?.getAttribute("data-status") ?? "",
+				mark: root?.querySelector(".tb-mark")?.textContent ?? "",
+				retired: root?.querySelector(".tb-retired")?.textContent ?? "",
+				hasForm: Boolean(root?.querySelector(".tb-form")),
+				hasRun: Boolean(root?.querySelector(".tb-run")),
+				links: [...(root?.querySelectorAll(".tb-foot a") ?? [])].map((a) => ({
+					href: a.getAttribute("href"),
+					label: a.textContent,
+				})),
+			};
+		});
+		assert.equal(dump.status, "retired");
+		assert.match(dump.mark, /Retired/);
+		assert.match(dump.retired, /no longer runs/);
+		assert.match(dump.retired, /way onward/);
+		assert.equal(dump.hasForm, false, "a retired tool must not paint a form");
+		assert.equal(dump.hasRun, false, "or a Run button");
+		assert.deepEqual(dump.links, [
+			{ href: "/tool.html?id=percentiles", label: "Use percentiles instead" },
+			{ href: "/index.html#retired-note", label: "Why it was retired" },
+		]);
+		assert.equal(
+			scripts.filter((url) => /\/assets\/tool-retired-[^/]+\.js$/.test(url)).length,
+			0,
+			`a retired tool must not fetch its code: ${scripts.join(", ")}`,
+		);
+		await page.close();
+	});
+
+	it("does not treat a retired card as a live facade", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const card = page.locator("#lifecycle-cards tool-host[tool=retired]");
+		await card.scrollIntoViewIfNeeded();
+		await card.locator(".tb-retired").waitFor();
+		assert.equal(await card.locator(".tb-facade").count(), 0, "there is nothing to click");
+		assert.equal(await card.locator(".tb-form").count(), 0);
+		assert.match(String(await card.locator(".tb-retired").textContent()), /no longer runs/);
+		assert.equal(await card.locator('.tb-foot a[href="/tool.html?id=percentiles"]').count(), 1);
+		await page.close();
+	});
+
+	it("marks a deprecated tool so a host can style it, and still runs", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('#lifecycle tool-host[tool=deprecated][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-form").waitFor();
+
+		const before = await page.evaluate(() => {
+			const el = document.querySelector('#lifecycle tool-host[tool=deprecated][mode="page"]');
+			const mark = el?.shadowRoot?.querySelector(".tb-mark");
+			return {
+				status: el?.getAttribute("data-status") ?? "",
+				mark: mark?.textContent ?? "",
+				markColor: mark ? getComputedStyle(mark).color : "",
+			};
+		});
+		assert.equal(before.status, "deprecated", "data-status on the host is the hook a page styles against");
+		assert.match(before.mark, /Deprecated/);
+		assert.notEqual(before.markColor, "", "the marker is painted, not a class with no style");
+		assert.notEqual(before.markColor, "rgba(0, 0, 0, 0)", "and it is not transparent");
+
+		await host.locator(".tb-run").click();
+		await page.waitForFunction(() =>
+			document.querySelector('#lifecycle tool-host[tool=deprecated][mode="page"]')?.shadowRoot?.textContent?.includes("still runs"),
+		);
+		await page.close();
+	});
+
+	it("does not treat a deprecated tool as a live card", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		assert.equal(await page.locator("#cards tool-host[tool=deprecated]").count(), 0, "not among the live cards");
+		assert.equal(await page.locator("#cards tool-host[tool=retired]").count(), 0, "and retired is not there either");
+		assert.equal(await page.locator("#cards tool-host[tool=percentiles]").count(), 1, "live tools stay in the grid");
+
+		const card = page.locator("#lifecycle-cards tool-host[tool=deprecated]");
+		await card.scrollIntoViewIfNeeded();
+		await card.locator(".tb-mark").waitFor();
+		assert.equal(await card.locator(".tb-facade").count(), 0, "the compact slot is not a click-to-activate facade");
+		assert.equal(await card.locator(".tb-form").count(), 0, "and it does not open a form");
+		assert.match(String(await card.locator(".tb-mark").textContent()), /Deprecated/);
+		assert.equal(await card.getAttribute("data-status"), "deprecated");
+		// The name is a link on every compact card. The foot is the extra affordance a
+		// deprecated card has instead of a click-to-activate facade.
+		assert.equal(
+			await card.locator('.tb-foot a[href="/tool.html?id=deprecated"]').count(),
+			1,
+			"the way to run it is the full page",
+		);
 		await page.close();
 	});
 });
@@ -987,4 +1456,124 @@ describe("accessibility wiring", () => {
 		assert.equal(accents.themed, "#0b6b5f");
 		await page.close();
 	});
+});
+
+describe("host code highlight hook", () => {
+	/*
+	 * The expected source is JSON.stringify(JSON.parse('{"ok":true,"n":3}'), null, 2), written out
+	 * by hand from that spec, not captured from a run. The fixture's default is that object.
+	 */
+	const pretty = '{\n  "ok": true,\n  "n": 3\n}';
+
+	it("receives (source, lang) and puts the returned Node in the DOM", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+		const painted = await page.evaluate(() => {
+			const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+			const block = root?.querySelector(".tb-out-code");
+			const hook = root?.querySelector("[data-highlight-hook]");
+			return {
+				lang: block?.getAttribute("data-lang") ?? "",
+				hookLang: hook?.getAttribute("data-highlight-lang") ?? "",
+				text: hook?.textContent ?? "",
+				tokens: [...(hook?.querySelectorAll("[data-tok]") ?? [])].map((el) => ({
+					kind: el.getAttribute("data-tok"),
+					text: el.textContent,
+				})),
+				directTextChild: hook?.firstChild?.nodeType === Node.TEXT_NODE && hook.childNodes.length === 1,
+			};
+		});
+
+		assert.equal(painted.lang, "json", "the renderer still sets data-lang");
+		assert.equal(painted.hookLang, "json", "the hook must see the language tag");
+		assert.equal(painted.text, pretty, "the hook must see the source, and the Node must keep it readable");
+		assert.equal(painted.directTextChild, false, "the text node was replaced, not left as a single text child");
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "string" && t.text === '"ok"'),
+			`expected a string token for "ok", got ${JSON.stringify(painted.tokens)}`,
+		);
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "keyword" && t.text === "true"),
+			`expected a keyword token for true, got ${JSON.stringify(painted.tokens)}`,
+		);
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "number" && t.text === "3"),
+			`expected a number token for 3, got ${JSON.stringify(painted.tokens)}`,
+		);
+		await page.close();
+	});
+
+	it("still renders readable plain text when the host omits the hook", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html?code=plain`, { waitUntil: "load" });
+		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+		const plain = await page.evaluate(() => {
+			const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+			const code = root?.querySelector(".tb-out-code code");
+			return {
+				lang: root?.querySelector(".tb-out-code")?.getAttribute("data-lang") ?? "",
+				text: code?.textContent ?? "",
+				hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+				onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+			};
+		});
+
+		assert.equal(plain.lang, "json");
+		assert.equal(plain.text, pretty, "without a hook the source is still there as preformatted text");
+		assert.equal(plain.hook, false, "the demo highlighter must not run");
+		assert.equal(plain.onlyText, true, "the existing path is a single text node inside <code>");
+		await page.close();
+	});
+
+	/*
+	 * A hook is host code, so the runtime has to keep drawing something readable whatever it is handed. Both
+	 * fallbacks are four lines in `renderCode` that anybody would assume work; neither had a test. The bench
+	 * installs a deliberately broken hook behind `?code=`, chosen inside `highlight.ts` so those instruments
+	 * stay out of the chunk the README publishes.
+	 */
+	for (const [mode, what] of [
+		["throw", "a hook that throws"],
+		["string", "a hook that returns a string instead of a node"],
+	] as const) {
+		it(`falls back to plain text when the host passes ${what}`, async () => {
+			const page = await browser.newPage();
+			const errors: string[] = [];
+			page.on("pageerror", (error) => errors.push(String(error)));
+			await page.goto(`${BASE}/index.html?code=${mode}`, { waitUntil: "load" });
+			const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+			await host.scrollIntoViewIfNeeded();
+			await host.locator(".tb-run").click();
+			await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+			const shown = await page.evaluate(() => {
+				const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+				const code = root?.querySelector(".tb-out-code code");
+				return {
+					text: code?.textContent ?? "",
+					hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+					onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+				};
+			});
+			// The same hand-derived expectation the no-hook test uses: a broken hook must be indistinguishable
+			// from no hook at all, which is a stronger claim than "something readable appeared".
+			assert.equal(shown.text, pretty, `a broken hook must fall back to the exact source: ${JSON.stringify(shown.text)}`);
+			assert.equal(shown.onlyText, true, "the fallback is a text node, not partially built markup");
+			assert.equal(shown.hook, false, "no hook marker, because the hook's output was discarded");
+			// A string return must not be parsed as markup, which is the reason the hook returns a Node.
+			assert.doesNotMatch(shown.text, /<em>/, "a string return must never reach the DOM as markup");
+			assert.deepEqual(errors, [], "a broken hook must not surface as an uncaught page error");
+			await page.close();
+		});
+	}
 });

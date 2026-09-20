@@ -44,6 +44,10 @@ export const STYLES = /* css */ `
   --tb-font:      system-ui, -apple-system, "Segoe UI", sans-serif;
   --tb-mono:      ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   --tb-gap:       0.75rem;
+  /* A host styles the deprecated/retired marker by setting these on tool-host. Shadow CSS
+     cannot be reached from outside, so the tokens are the hook. */
+  --tb-mark-fg:   var(--tb-warn);
+  --tb-mark-bg:   var(--tb-accent-bg);
 
   /* Series colours. Six, then they repeat — a chart needing seven is a chart needing a rethink. */
   --tb-s1: #8a5a00; --tb-s2: #5b3fa8; --tb-s3: #0f6e6e;
@@ -91,6 +95,19 @@ export const STYLES = /* css */ `
 }
 .tb-name a:hover, .tb-name a:focus-visible { color: var(--tb-accent); text-decoration: underline; }
 .tb-blurb { margin: 0.25rem 0 0; color: var(--tb-muted); font-size: 0.9rem; }
+.tb-title { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.55rem; }
+.tb-mark {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  color: var(--tb-mark-fg);
+  background: var(--tb-mark-bg);
+  border: 1px solid var(--tb-mark-fg);
+}
+.tb-retired { margin: 0; color: var(--tb-muted); font-size: 0.9rem; }
 
 .tb-body { padding: 0.875rem 1rem 1rem; display: grid; gap: var(--tb-gap); }
 

@@ -18,6 +18,9 @@ defineToolHost({
     reverse: { manifest, load: () => import("./tools/reverse/index.ts") },
   }),
   pageUrl: (id) => `/tools/${id}/`,
+  // Optional. Paint `code` results with the highlighter you already have.
+  // Return a Node, never a string: the runtime will not assign innerHTML.
+  // highlight: (source, lang) => yourHighlighter(source, lang),
 });
 ```
 
@@ -27,6 +30,15 @@ Then use it anywhere:
 <tool-host tool="reverse" mode="card"></tool-host>
 <tool-host tool="reverse" mode="page"></tool-host>
 <tool-host tool="reverse" mode="embed"></tool-host>
+```
+
+A host can prefill inputs without reaching into the shadow root. `values` is partial, validated like
+typed input, and does not run the tool. `run()` is opt-in, and both work before the form has opened:
+
+```ts
+const host = document.querySelector("tool-host");
+host.values = { text: "hello" };
+host.run();
 ```
 
 ## What you get
@@ -40,6 +52,11 @@ Then use it anywhere:
   thread, and a runaway loop is terminated instead of freezing the page.
 * **Styles that cannot collide.** Everything renders in a shadow root. Theming is a dozen CSS custom
   properties, and that list is the whole styling API.
+* **Host-owned syntax highlighting.** Pass `highlight?: (source, lang) => Node` to paint `code`
+  results with the highlighter you already have. Omit it and the source stays readable plain text.
+* **Lifecycle status is honoured.** `deprecated` still runs, with a marker a host can style via
+  `data-status` and `--tb-mark-*`. `retired` does not: the element explains, renders `links`, and
+  never fetches the tool's code.
 
 ## Size
 

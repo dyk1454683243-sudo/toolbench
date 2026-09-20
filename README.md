@@ -195,6 +195,8 @@ defineToolHost({
     reverse: { manifest, load: () => import("./tools/reverse/index.ts") },
   }),
   pageUrl: (id) => `/tools/${id}/`,
+  // Optional. Return a Node, never a string: the runtime will not assign innerHTML.
+  // highlight: (source, lang) => yourHighlighter(source, lang),
 });
 ```
 
@@ -329,6 +331,22 @@ before meeting it for real. Cards show no samples: there is room there for one i
 Added in contract version 3, and
 [docs/authoring-a-tool.md](docs/authoring-a-tool.md#4b-sample-inputs) covers choosing them.
 
+**A host can prefill the form** without putting those examples in the tool, and without reaching into
+the shadow root. `values` fills inputs the way typing does. It does not run the tool. `run()` is
+opt-in:
+
+```ts
+const host = document.querySelector("tool-host");
+host.values = { packet: "80 e0 12 34 …", view: "all" }; // partial; does not run
+host.run();                                            // optional
+```
+
+Unspecified inputs keep their current value. Out-of-range numbers are clamped, an invalid `select`
+falls back to that input's default, and a string longer than `maxLength` is cut: a host is not more
+trustworthy than a reader. An existing result goes stale, the same as typing. This works before the
+form has opened, so a card can be prefilled. A shareable `?in=…` deep link is then a host feature,
+with no further contract change.
+
 ## Result shapes
 
 A tool returns one of a closed set of shapes, so the runtime can draw anything a tool produces and a
@@ -340,7 +358,7 @@ tool cannot invent something nobody can render.
 | `table` | Columns and rows, with alignment and per-cell emphasis |
 | `series` | A chart with axes, legend and annotations. Ships the same numbers as a table for readers who cannot see it |
 | `text` | Prose or preformatted output |
-| `code` | Source, with a language tag the host can highlight |
+| `code` | Source, with a language tag. The runtime renders preformatted text. A host that already has a highlighter passes `highlight?: (source, lang) => Node` to `defineToolHost` |
 | `bytes` | Raw bytes as a reader of a wire format wants them: offsets, hex, a printable gutter, and named ranges that can wrap a row |
 | `group` | Several of the above in one result. A decoder that returns fields *and* a table is the common case |
 | `error` | The input was wrong. Naming the input marks that control invalid and attaches the message to it |
@@ -407,7 +425,7 @@ Measured on the built bench with gzip, not estimated:
 | | Transfer |
 |---|---|
 | Runtime plus the bench's page wiring, once per page that uses a tool | 19.6 KB |
-| Worker entry, only for pages with a worker-mode tool | 3.3 KB |
+| Worker entry, only for pages with a worker-mode tool | 3.1 KB |
 | `percentiles` tool chunk | 1.2 KB |
 | `queue-explorer` tool chunk | 1.2 KB |
 | A page with no tool on it | 0 bytes |
@@ -420,6 +438,24 @@ budget, so these numbers cannot rot.
 
 In the browser the runtime needs custom elements, shadow DOM, `IntersectionObserver`, module workers
 and CSS container queries: Chrome 105+, Firefox 114+, Safari 16.4+.
+
+CI runs the bench suite against Playwright's Chromium, Firefox and WebKit, on every pull request. That
+turns "it works in three engines" from a claim into something checked. Note what it does not establish: those
+are the engines Playwright ships today, not the version floors above, so the floors remain the oldest engines
+the code is written against rather than the oldest ones tested. Locally, after `pnpm bench:build`:
+
+```sh
+pnpm exec playwright install firefox   # or webkit, or chromium
+PLAYWRIGHT_BROWSER=firefox pnpm test:bench
+```
+
+Unset, `pnpm test:bench` still opens system Chrome (`CHROME_CHANNEL`, default `chrome`). CI sets
+`CHROME_CHANNEL=chromium` so the runner uses the browser Playwright just installed.
+
+No runtime gap turned up on those three engines. One test-harness difference did: Playwright's page
+request listener reports a worker's module `import()` as `script` on Chromium, `xhr` on WebKit, and
+not at all on Firefox. The suite reads the worker's own performance timeline for that allowlist, which
+is the observation that holds on every engine.
 
 Two newer features are used with plain fallbacks in front of them, so a browser without either gets
 light colours rather than a broken layout: `light-dark()` for automatic dark mode (Chrome 123+,
@@ -455,7 +491,8 @@ pnpm install
 pnpm check          # typecheck, unit tests, every tool's fixtures
 pnpm new-tool <id>  # scaffold tools/<id>/ (four files, already green)
 pnpm bench          # the bench on http://localhost:5180
-pnpm test:bench     # the same bench, driven by Chrome
+pnpm test:bench     # the same bench, in Chromium, Firefox, or WebKit
+pnpm coverage       # Node suite coverage: uncovered list, no threshold
 ```
 
 ## Documentation

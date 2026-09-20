@@ -163,17 +163,19 @@ toolbench/
 │   ├── percentiles/                pure, main thread, group of fields and table
 │   └── queue-explorer/             pure, worker, group of series and fields, plus convergence tests
 ├── bench/
-│   ├── index.html                  card mode, theming, failure modes
+│   ├── index.html                  card mode, theming, failure modes, lifecycle status
 │   ├── tool.html                   page mode
 │   ├── article.html                embed mode, two tools in prose
 │   ├── bench.test.ts               the runtime driven by Chrome against the built bench
 │   ├── fixtures/stress/            a tool that misbehaves on purpose
+│   ├── fixtures/retired/           a tool that must not run
+│   ├── fixtures/deprecated/        a tool that still runs, marked
 │   └── src/                        registry, boot, worker entry, page scripts
 ├── scripts/
 │   ├── new-tool.mjs                scaffolds the four files under tools/<id>
 │   └── size-check.mjs              transfer budgets for the built bench
 ├── docs/                           this file, authoring, versioning
-└── .github/workflows/ci.yml        typecheck, tests, build, browser tests
+└── .github/workflows/             tests.yml, build.yml, release.yml
 ```
 
 ## 5. The contract
@@ -268,11 +270,13 @@ The fields, and who reads each one:
 | `inputs` | element (form), fixture runner (defaults) | |
 | `samples` | validate, element (the row under the form), fixture runner | Labelled example inputs, each `input` partial. Never drawn on a card. |
 | `kinds` | validate, fixture runner, host | Every kind `run` can return. Must include `"error"`. |
-| `card` | element | `"live"`, `"info"`, `"none"`. |
+| `card` | element, validate | `"live"`, `"info"`, `"none"`. Refused when `status` is not `"live"`. |
 | `cardFields` | renderers | How many fields a compact result shows. |
 | `autoRun` | element | Run as the reader types. Off by default. |
 | `timeoutMs` | runner | Worker mode only. Rejected on the main thread. |
-| `help`, `tags`, `links`, `status` | host | Presentation and lifecycle. |
+| `help`, `tags` | host | Presentation. |
+| `links` | element, host | Specs, source, and the replacement for a retired tool. |
+| `status` | element, host | `live` (default), `deprecated`, `retired`. The element honours it. |
 
 ## 6. Components
 
@@ -319,12 +323,17 @@ opt-in and has to justify itself:
 **`element.ts`** is `<tool-host>`, and it is the only public surface most hosts touch. It owns:
 
 * reading `tool` and `mode` attributes, and the inline seed;
+* a `values` setter and `run()` method, so a host can prefill the form and opt into running without
+  reaching into the shadow root;
 * deciding when to activate (click for a card, intersection for a page or embed);
+* honouring `status`: retired never activates and renders `links`; deprecated is marked and is not a live card;
 * building the form from `manifest.inputs`, including labels, descriptions, bounds and text direction;
 * the state machine: facade, loading, idle, running, result, stale, error;
 * accessibility: label association, `aria-describedby`, `aria-invalid` driven by `error.input`, a
   `role="status"` region carrying a short summary, focus moved only on an explicit run;
-* teardown, which is what stops a worker leaking on client-side navigation.
+* teardown, which is what stops a worker leaking on client-side navigation;
+* an optional `highlight` hook on `defineToolHost`, so a host can paint `code` results without the
+  runtime bundling a highlighter. The hook returns a `Node`, not a string.
 
 **`runner.ts`** executes. Its whole job is the difference between "call a function" and "call a
 function that might not come back":
@@ -561,9 +570,11 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 | A select has two or more options and its default is one of them | `validate.ts` | A control with one choice, or none selected |
 | `kinds` includes `"error"` | `validate.ts` | A tool with no way to reject bad input |
 | Every case's `expect.kind` is declared in `kinds` | `tools/cases.test.ts` | `kinds` drifts into fiction |
-| Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label | `validate.ts` | A button that fills the form with a value the form itself refuses |
+| Every sample fills declared inputs only, with values of the right type inside their bounds, and no two share a label or the same input values | `validate.ts` | A button that fills the form with a value the form itself refuses, or two buttons that do the same thing |
 | Every declared sample runs without throwing | `tools/cases.test.ts` | The first thing a reader clicks is the first thing to crash |
 | Only a `pure` tool with no assets may be `card: "live"` | `validate.ts` | A landing page card could read files or call the network |
+| Only a `live` tool may be `card: "live"` | `validate.ts`, `element.ts` | A compact slot would present a tool on the way out, or already gone, as current |
+| A retired tool never activates | `element.ts` | A bookmarked URL would run a tool the author took down |
 | `timeoutMs` requires `thread: "worker"` | `validate.ts` | A field that cannot do what it says |
 | `autoRun` is refused on a worker-mode tool | `validate.ts` | Keystroke-triggered runs of the slowest tools |
 | Every `Output` kind has a renderer | `render/index.ts` exhaustive switch | A blank space in front of a reader |
@@ -576,11 +587,12 @@ Rules the rest of the system relies on. Each is checked once, in one place, and 
 
 ```
 connectedCallback
-  └─ read seed, list manifests, paint facade
-       └─ (card) click  ──┐
-       └─ (page)  observe ┴─ activate
-                             └─ load module, create Runner, paint form
-                                  └─ run, run, run ...
+  └─ read seed, list manifests, paint
+       ├─ (retired) stop: explain, render links. Never activate.
+       ├─ (card, not deprecated) click ──┐
+       └─ (page/embed) observe ──────────┴─ activate
+                                            └─ load module, create Runner, paint form
+                                                 └─ run, run, run ...
 disconnectedCallback
   └─ runner.dispose()   cancel in flight, terminate the worker
   └─ observer.disconnect()
@@ -710,25 +722,56 @@ build: {
 | Command | Output |
 |---|---|
 | `pnpm build` | `packages/*/dist`: ESM plus `.d.ts` and source maps. No bundling; consumers bundle. |
-| `pnpm bench:build` | `bench/dist`: three HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk. Per-tool chunks are emitted twice, once for the worker pass, which §13 explains. |
+| `pnpm bench:build` | `bench/dist`: three HTML entries, one CSS file, one runtime chunk, one chunk per tool, one worker chunk, and two bench-only chunks for the theme switch and the fixture manifests. Per-tool chunks and the fixture chunk are emitted twice, once for the worker pass, which §13 explains. |
 
 ### 11.5 CI
 
-`.github/workflows/ci.yml`, on push to `main` and on every pull request: install with a frozen
-lockfile, typecheck, test, build, build the bench, install Chromium, run the browser tests. The step
-that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current SDK and
-runtime. That is the mechanism behind the compatibility promise, not a nicety.
+Three workflows, not one. `tests.yml` and `build.yml` run on push to `main` and on every pull request,
+and `release.yml` runs on push to `main` only. `tests.yml` installs with a frozen lockfile, typechecks
+and runs `pnpm test`; `build.yml` builds the packages, checks the published contents, builds the bench,
+checks the transfer budgets, and runs the browser suite on Chromium, Firefox and WebKit. Both job names are required
+status checks on `main`, so renaming either one silently stops gating anything.
+
+The step that matters most is `pnpm test`, because it runs **every** tool's fixtures against the current
+SDK and runtime. That is the mechanism behind the compatibility promise, not a nicety.
+
+`tests.yml` also runs `pnpm coverage` after `pnpm test` and writes the uncovered list to the job summary.
+It reports; it does not gate on a percentage, and the step is advisory so a report cannot block a merge.
+The globs come from the `test` script rather than a copy of it. The browser suite is not in those
+numbers, and the report says which files it never loaded for that reason.
 
 ## 12. Testing strategy
 
-Four layers. Each catches something the others structurally cannot.
+Six layers. Each catches something the others structurally cannot.
 
 | Layer | Where it runs | What it covers | Count |
 |---|---|---|---|
-| `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 79 |
+| `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 87 |
+| `packages/runtime/src/*.test.ts` | Node | Coerce and the partial merge used by typing, samples, and the host `values` setter: clamp, refuse, truncate, unknown ids | 9 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 28 |
+| `scripts/*.test.ts` | Node | The repo's own tooling, where getting it wrong is silent: that `pnpm new-tool` emits a tool which passes the harness unedited and matches its golden fixtures byte for byte, and that the fixture declares the current contract version rather than a literal | 20 |
+| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 49 |
+
+The Count column is measured, not maintained: `pnpm test:counts` runs each layer and reports what the table
+says beside what it found, and `--update` rewrites the cells. It exists because these numbers changed on
+almost every pull request and collided in four consecutive rebases, five pull requests in one batch each
+correcting the browser count to a different value that was right against the `main` it was written on. It also
+sums the Node rows and compares them against `pnpm test`: if tests live somewhere no row covers, the table is
+describing a subset and the script says so rather than letting a number be corrected. That is how the missing
+`scripts/*.test.ts` row was found.
+
+`pnpm coverage` runs the Node rows of that table with Node's built-in test coverage (the same
+collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not
+fail on a percentage, and the CI step is advisory, so a report cannot hold a merge shut. It takes the
+globs from the `test` script rather than keeping a copy: a copy had already drifted by a whole test
+directory within a day of being written, and a coverage figure over a smaller suite than you think you
+are measuring reads as good news.
+
+The browser row is not in those numbers: Playwright coverage is a different collection, and files the
+Node process never loads (`packages/runtime`, which needs a DOM) do not appear as 0%. That is why the
+report ends with the list of files it never loaded, which is the honest caveat on a figure covering 10
+of 22 source files. Read that list once and file what it reveals.
 
 The browser layer is weighted towards things that only exist in a browser or only appear in a
 production build:
@@ -737,6 +780,8 @@ production build:
 * a seeded card shows a real result before anything runs;
 * activation does not run the tool, and the status says "press Run";
 * changing an input marks the result stale without re-running, and Run clears it;
+* a host `values` write fills the form without running, clamps like typing, works before a card
+  opens, and `run()` after it produces a result;
 * a sample fills the form, sets several inputs at once, leaves the ones it does not name alone, keeps
   focus on the button that was pressed, and draws no row on a card;
 * Run attention is a fill change, not a ring, so it cannot be mistaken for `:focus-visible`;
@@ -744,8 +789,12 @@ production build:
 * a tool that spins forever is killed by the timeout, the page stays responsive, and the next run gets a
   fresh worker;
 * a crash reads differently from bad input, and bad input marks the right control invalid;
+* a retired tool never fetches its code, explains, and renders its links; a deprecated tool is marked,
+  still runs on its page, and is not a live card;
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
-* theming through custom properties only.
+* theming through custom properties only;
+* a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps
+  readable plain text.
 
 Two habits worth keeping. **Test against the built artifact**, because a minifier deleted a loop that
 made a timeout test pass for the wrong reason (§14). And **assert an allowlist rather than a denylist**
@@ -759,23 +808,59 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 19.6 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, and 0.5 KB with richer cards |
+| Runtime plus the bench's own wiring | 19.6 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, 0.6 KB with the host `values` and `run()` API, and 0.1 KB with the host `highlight` hook |
 | Stylesheet | 0.9 KB | |
-| Worker entry | 3.3 KB | Only on pages with a worker-mode tool, and only after activation |
+| Worker entry | 3.1 KB | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
 | `queue-explorer` chunk | 1.2 KB | |
 | A page with no tool | 0 bytes | Nothing is imported |
 | A card nobody opens | 0 bytes of tool code | The facade is markup |
 
-Where the budget is spent: about half the runtime chunk is the chart renderer and the stylesheet. If
-that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
-most tools never draw one.
+Where the budget is spent: this chunk is the runtime (element, runner, every renderer except the chart,
+and `styles.ts`) plus the bench's page wiring.
 
-That chunk now measures 19,837 bytes against a 20,500 byte ceiling, so the next thing that costs real
-bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
-table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
-bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
-rather than only here.
+**The chart renderer is split out**, which issue #12 asked about and #76 measured before it was taken. The
+shape is the one that keeps `render` synchronous, and that property is what made it worth doing: `<tool-host>`
+awaits the chunk inside `#prepare` when the manifest declares `series` in `kinds`, so a seeded card can paint
+a chart with no chance to await and every later draw is synchronous too. A tool that returns a `series` without
+declaring it gets a redraw one frame later rather than a wrong answer, because `render` throws a specific error
+that `#draw` catches. Measured: `boot` 20,360 to 18,988, a saving of 1,372 bytes, against a 1,970 byte chart
+chunk that only a page with a chart tool downloads. The ceiling came down from 20,500 to 19,500 with it,
+because a ceiling that only ever rises stops being a constraint.
+
+That chunk now measures 19,637 bytes against a 20,000 byte ceiling, leaving 363 bytes. So the next thing
+that costs real bytes buys them explicitly, by raising the budget in the commit that spends it and moving this
+table with it. The chart split was the obvious lever and it has been taken, so the next one will have to be
+argued rather than reached for.
+
+Worth following the last two changes together, because in isolation each looks like the figure going the wrong
+way. Splitting the chart renderer took `boot` from 20,360 to 18,988 and the ceiling from 20,500 to 19,500.
+Honouring `status` then cost 649 bytes, 137 over that new ceiling, so the ceiling went to 20,000. Net: the
+figure a consumer reads is **lower than before either change**, 19,637 against 20,360, while the runtime gained
+a feature. That is the shape to aim for, and it only worked because the saving was measured before it was
+spent.
+
+Measured on this tree rather than remembered, since several of these figures have been wrong at some point: the
+host `values` and `run()` API cost 567 gzipped bytes, the `highlight` hook 131, and honouring `status` 649. The
+demo highlighter is not in `boot` at all: it is a `bench-highlight` chunk of 668 bytes, alongside
+`bench-fixtures` at 1,267 and the `chart` renderer at 1,970. The first two are `deployOnly` because a consumer
+downloads neither; the chart chunk is not, because a reader of a chart tool does.
+
+The host `values` and `run()` API cost 567 of those bytes and the `highlight` hook 131, measured after the
+bench fixtures were split out, which leaves 140 bytes free. That is not headroom, and the levers left are
+narrow: the fixture split is already spent, and §13's chart-renderer split was measured and argued against
+separately. The next change that costs real bytes should expect to raise the ceiling and say what bought
+them.
+
+**What the figure deliberately excludes.** A test instrument that no consumer ships does not belong in a
+number a consumer reads, so two of them are split into their own chunks with their own budget lines: the
+bench's theme switch, and the fixture manifests under `bench/fixtures`. The second was not obvious. Manifests
+are collected with an eager glob, which inlines each `tool.json` into whichever chunk imports it, and
+`registry.ts` is reachable from every entry, so a fixture whose whole purpose is to fail on purpose was
+compiling into both `boot` and the worker bundle: 340 and 334 bytes for one fixture, at a point when the
+ceiling had 498 bytes left and three more fixtures were queued in open pull requests. Splitting them did not
+make the bench download less. It made the published figure answer the question it claims to answer, because a
+consumer running the tool-directory harness over their own tools has no `bench/fixtures` at all.
 
 **One duplication to know about.** Vite builds a worker in a separate Rollup pass, so every tool
 reachable from the worker is emitted twice: `tool-<id>` for the main thread and `worker-tool-<id>` for
@@ -811,6 +896,7 @@ is here because the guards look arbitrary without it.
 | Run's stale-result cue looked like a focus ring | After a sample click the pressed pill kept focus and Run wore a soft ring hugging its edge, the same family of cue as `:focus-visible`. A keyboard reader could take the halo as "Run is where my keyboard is" and press Enter, which would re-fire the pill | A fill derived from `--tb-accent` that moves away from the surface behind it, darker on white and paler on near-black, not an outline or box-shadow. Browser test asserts the fill changes, that attention draws no ring, and that `:focus-visible` is still a 2px outline when both states are on |
 | A card facade's name hid its visible hint | `aria-label` was `Open ${name}` while the button said "Try it" (or "Open this tool" without a seed). A speech-input user saying "click Try it" matched nothing | The name is `${hint}: ${name}`, from the same string the hint uses. Browser test asserts the accessible name contains the visible hint on a seeded card and an unseeded one |
 | A card title link was 20px tall | `.tb-name` is 1.05rem with no padding, so the `pageUrl` anchor was exactly its text (measured 160×20 against the 24px WCAG 2.5.8 floor) | Block padding and `min-height: 24px` on `.tb-name a`, for every mode that uses the title link. Browser test measures the box |
+| `percentiles` treated a thousands grouping as extra measurements | Pasting `1,204 980 1,100 1,340` was read as seven measurements (1, 204, 980, 1, 100, 1, 340), so the result showed min 1 and mean 232.4 with no error. Every figure on screen was wrong and all of them looked reasonable | A comma between digits is refused as `{ kind: "error" }` naming the token, in the same style as `"18ms" is not a number`. Fixtures assert the refusal and lock `12, 14, 15` as still valid |
 
 ## 15. Limitations
 
@@ -822,13 +908,26 @@ Known and accepted, with what each costs.
 * **No sandbox.** A tool runs with the page's privileges. Worker mode isolates the *thread*, not the
   origin: it shares cookies and does not inherit the page's Content-Security-Policy. Fine for code you
   wrote; not fine for code you did not.
-* **No syntax highlighting for `code` results.** The `data-lang` attribute is a hook for a host that
-  already has a highlighter. Bundling one would double the runtime.
+* **No bundled syntax highlighter.** `code` results stay readable as preformatted text with
+  `data-lang` set. A host that already has a highlighter passes `highlight` to `defineToolHost`. The
+  hook returns a `Node`, not a string, so the runtime never assigns `innerHTML`. Bundling one would
+  roughly double the runtime.
 * **The chart is deliberately simple.** No tooltips, no zoom, no time axis. It draws what `Chart`
   describes.
-* **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup.
-  That is milliseconds for tens of tools and would need revisiting at hundreds.
-* **No `series` renderer split.** See §13.
+* **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup,
+  so a malformed tool is a startup error that names the field. Measured 2026-09-19 with
+  `pnpm measure:registry` on Node v24.21.0 (linux x64, Intel Xeon): 500 synthetic current-contract
+  manifests, two inputs each. Three consecutive process runs, 21 timed constructions after 5
+  warmups, had medians of 0.71 ms, 0.98 ms and 0.77 ms (lowest sample 0.47 ms, highest 1.96 ms).
+  Under a millisecond at several hundred tools, so the constructor stays eager. Revisit if a host
+  is in the thousands. Re-measured on review, Node v26.7.0 on an Apple M3 Pro: median 0.33 ms over the
+  same 500. Two machines an order of magnitude apart in this figure both land well under the bar, which
+  is what makes the conclusion safe to rest on rather than a property of one laptop. The script times `new RegistrySource` only. Generation sits outside the
+  timed region, and so does JSON.parse: a host already has objects when it constructs the source.
+* **A page whose tool draws a chart downloads one extra chunk.** The `series` renderer is no longer in
+  `boot`: it is about 2.0 KB fetched only when a manifest declares `series`. `render` stays synchronous,
+  because `<tool-host>` awaits the chunk during `#prepare` rather than at first use. The cost is one request
+  for chart tools; the saving is 1,372 bytes for every page without one. See §13.
 * **Node 24 or newer for development.** Tools and tests run as TypeScript with no build step, which is
   worth the floor.
 
@@ -930,6 +1029,7 @@ declaration, so browsers without that function get the light palette rather than
 | `--tb-radius` | `10px` | Corner radius |
 | `--tb-font`, `--tb-mono` | system stacks | Type |
 | `--tb-gap` | `0.75rem` | Vertical rhythm inside the tool |
+| `--tb-mark-fg`, `--tb-mark-bg` | `--tb-warn`, `--tb-accent-bg` | The deprecated and retired marker. A host sets these on `tool-host`; `data-status` is also on the host so the page can style the element itself |
 
 ### 17.3 Public API index
 
@@ -950,7 +1050,7 @@ declaration, so browsers without that function get the light palette rather than
 
 | Export | Kind |
 |---|---|
-| `defineToolHost`, `ToolHost`, `ToolHostConfig`, `Mode` | the element |
+| `defineToolHost`, `ToolHost`, `ToolHostConfig`, `Mode` | the element. `ToolHostConfig.highlight` is the optional host highlighter for `code` results |
 | `RegistrySource`, `ToolSource`, `RegistryEntry`, `ToolNotFoundError` | sources |
 | `Runner`, `RunHooks`, `RunnerOptions`, `isSuperseded` | execution |
 | `ToolTimeoutError`, `ToolCrashError`, `WorkerUnavailableError`, `Request`, `Response` | protocol |

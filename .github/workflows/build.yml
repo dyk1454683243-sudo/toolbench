@@ -1,4 +1,4 @@
-# The slow half: real builds, real browser, real transfer sizes.
+# The slow half: real builds, real browsers, real transfer sizes.
 #
 # Separate from tests.yml so it gets its own badge and runs in parallel. It answers a different
 # question: not "is the logic right" but "does what we ship actually work and stay small".
@@ -18,9 +18,13 @@ permissions:
   contents: read
 
 jobs:
+  # Build and measure once. Three engines running three identical builds proved nothing three times,
+  # and the transfer budget in particular is a property of the bundle rather than of the browser
+  # reading it, so measuring it per engine invites three answers to a one-answer question.
   build:
-    name: packages, bench, browser
+    name: build and measure
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4.3.0
@@ -50,18 +54,92 @@ jobs:
         # small. Also catches a chunk vanishing or stopping being split.
         run: node scripts/size-check.mjs
 
-      - name: The runtime, in a real browser
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          CHROME_CHANNEL=chromium pnpm test:bench
-
-      - name: Keep the built bench
-        # Useful on a failure: you can download it and open the exact build the browser tests ran
-        # against, rather than trying to reproduce the state locally.
+      - name: Keep what was built
+        # Useful on a failure: download it and open the exact build the browser tests ran against,
+        # rather than trying to reproduce the state locally. Also what the browser jobs below consume,
+        # so every engine reads the same bytes rather than its own rebuild.
+        #
+        # ⚠️ The packages' dist is in here too, and not for symmetry. `pnpm test:bench` starts
+        # `vite preview`, which loads `bench/vite.config.ts`, whose seed plugin imports
+        # `@toolbench/sdk`, which resolves to `packages/sdk/dist`. Shipping only `bench/dist` gave three
+        # engine legs failing with "vite preview did not start", which names the symptom and not the
+        # cause. A built bench is not self-sufficient: serving it needs the workspace built too.
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
-          name: bench-dist
-          path: bench/dist
+          name: built
+          path: |
+            bench/dist
+            packages/sdk/dist
+            packages/runtime/dist
           retention-days: 7
           if-no-files-found: error
+
+  # One job per engine, reading the build above. fail-fast is off because "Firefox is broken" and
+  # "WebKit is broken" are different findings and cancelling the second to report the first hides one.
+  browser:
+    name: browser (${{ matrix.browser }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Take what was built and measured
+        # Into the repository root, because the artifact holds bench/dist and both packages' dist and
+        # its paths are relative to that root.
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: built
+          path: .
+
+      - name: Cache the browser binaries
+        # A --with-deps install is most of this job's wall clock. Keyed on the Playwright version,
+        # because that is what decides which browser builds are wanted.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ matrix.browser }}
+
+      - name: The runtime, in a real browser
+        env:
+          PLAYWRIGHT_BROWSER: ${{ matrix.browser }}
+          # Bundled Chromium, not a system Chrome the runner does not have.
+          CHROME_CHANNEL: chromium
+        run: |
+          pnpm exec playwright install --with-deps "$PLAYWRIGHT_BROWSER"
+          pnpm test:bench
+
+  # ⚠️ This job exists for branch protection, and its name must not change.
+  #
+  # `main` requires a status check called "packages, bench, browser". GitHub appends matrix values to a
+  # job's name, so making the browser job a matrix would have reported "packages, bench, browser
+  # (chromium)" and friends, the required context would never have appeared again, and every merge would
+  # have blocked indefinitely. Keeping one unmatrixed job that waits on the others means the required
+  # context keeps existing, adding a fourth engine needs no change to repository settings, and there is
+  # no window where main is unmergeable.
+  required:
+    name: packages, bench, browser
+    needs: [build, browser]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless the build and every engine passed
+        # `needs` alone does not do this: with `if: always()` this job runs even when a dependency
+        # failed, so the result has to be asserted rather than assumed.
+        run: |
+          echo "build:   ${{ needs.build.result }}"
+          echo "browser: ${{ needs.browser.result }}"
+          test "${{ needs.build.result }}" = "success" || exit 1
+          test "${{ needs.browser.result }}" = "success" || exit 1
