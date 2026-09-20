@@ -93,3 +93,31 @@ export function highlight(source: string, lang: string): Node {
 	else root.textContent = source;
 	return root;
 }
+
+/*
+ * Which hook the bench installs, decided here rather than in `boot.ts` on purpose.
+ *
+ * ⚠️ This file is its own chunk; `boot.ts` is the figure the README publishes. Putting the query-param
+ * read and the deliberately broken hooks in `boot.ts` cost 62 gzipped bytes of that figure, measured, at a
+ * point when it had 117 to spare. A test instrument gets its own chunk, which is the same rule the theme
+ * switch and the fixture manifests follow.
+ *
+ * The cases are what the renderer promises to survive rather than a sample of them. `plain` omits the hook,
+ * which is what a host uninterested in highlighting does. `throw` and `string` exist because those
+ * fallbacks are four lines anyone would assume work, and a hook is host code: the runtime has to keep
+ * drawing a readable result whatever it is handed.
+ */
+export function hostHighlight(search: string): ((source: string, lang: string) => Node) | undefined {
+	switch (new URLSearchParams(search).get("code")) {
+		case "plain":
+			return undefined;
+		case "throw":
+			return () => {
+				throw new Error("a host highlighter that throws");
+			};
+		case "string":
+			return (() => "<em>not a node</em>") as unknown as (source: string, lang: string) => Node;
+		default:
+			return highlight;
+	}
+}

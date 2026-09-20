@@ -5,7 +5,7 @@
  * that turns a tool id into a URL. Everything else is `<tool-host>` in the markup.
  */
 import { defineToolHost, RegistrySource } from "@toolbench/runtime";
-import { highlight } from "./highlight.ts";
+import { hostHighlight } from "./highlight.ts";
 import { registry } from "./registry.ts";
 import { installThemeControl } from "./theme.ts";
 
@@ -13,12 +13,9 @@ installThemeControl();
 
 export const source = new RegistrySource(registry);
 
-/*
- * `?plain-code` is a test instrument: it omits the hook so a browser test can still see the
- * default preformatted text. A host that does not care about highlighting does the same thing by
- * leaving `highlight` out of defineToolHost.
- */
-const plainCode = new URLSearchParams(location.search).has("plain-code");
+// Which highlighter, including the deliberately broken ones a browser test needs. Chosen inside
+// highlight.ts so the query-param read and those hooks stay out of the chunk the README publishes.
+const hostHook = hostHighlight(location.search);
 
 defineToolHost({
 	source,
@@ -29,5 +26,5 @@ defineToolHost({
 	 */
 	workerFactory: () => new Worker(new URL("./tool.worker.ts", import.meta.url), { type: "module" }),
 	pageUrl: (id) => `/tool.html?id=${encodeURIComponent(id)}`,
-	...(plainCode ? {} : { highlight }),
+	...(hostHook ? { highlight: hostHook } : {}),
 });

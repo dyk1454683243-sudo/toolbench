@@ -1281,7 +1281,7 @@ describe("host code highlight hook", () => {
 
 	it("still renders readable plain text when the host omits the hook", async () => {
 		const page = await browser.newPage();
-		await page.goto(`${BASE}/index.html?plain-code`, { waitUntil: "load" });
+		await page.goto(`${BASE}/index.html?code=plain`, { waitUntil: "load" });
 		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
 		await host.scrollIntoViewIfNeeded();
 		await host.locator(".tb-run").waitFor();
@@ -1305,4 +1305,45 @@ describe("host code highlight hook", () => {
 		assert.equal(plain.onlyText, true, "the existing path is a single text node inside <code>");
 		await page.close();
 	});
+
+	/*
+	 * A hook is host code, so the runtime has to keep drawing something readable whatever it is handed. Both
+	 * fallbacks are four lines in `renderCode` that anybody would assume work; neither had a test. The bench
+	 * installs a deliberately broken hook behind `?code=`, chosen inside `highlight.ts` so those instruments
+	 * stay out of the chunk the README publishes.
+	 */
+	for (const [mode, what] of [
+		["throw", "a hook that throws"],
+		["string", "a hook that returns a string instead of a node"],
+	] as const) {
+		it(`falls back to plain text when the host passes ${what}`, async () => {
+			const page = await browser.newPage();
+			const errors: string[] = [];
+			page.on("pageerror", (error) => errors.push(String(error)));
+			await page.goto(`${BASE}/index.html?code=${mode}`, { waitUntil: "load" });
+			const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+			await host.scrollIntoViewIfNeeded();
+			await host.locator(".tb-run").click();
+			await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+			const shown = await page.evaluate(() => {
+				const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+				const code = root?.querySelector(".tb-out-code code");
+				return {
+					text: code?.textContent ?? "",
+					hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+					onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+				};
+			});
+			// The same hand-derived expectation the no-hook test uses: a broken hook must be indistinguishable
+			// from no hook at all, which is a stronger claim than "something readable appeared".
+			assert.equal(shown.text, pretty, `a broken hook must fall back to the exact source: ${JSON.stringify(shown.text)}`);
+			assert.equal(shown.onlyText, true, "the fallback is a text node, not partially built markup");
+			assert.equal(shown.hook, false, "no hook marker, because the hook's output was discarded");
+			// A string return must not be parsed as markup, which is the reason the hook returns a Node.
+			assert.doesNotMatch(shown.text, /<em>/, "a string return must never reach the DOM as markup");
+			assert.deepEqual(errors, [], "a broken hook must not surface as an uncaught page error");
+			await page.close();
+		});
+	}
 });
