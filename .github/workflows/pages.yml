@@ -39,6 +39,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      - name: Build the packages
+        # ⚠️ Before the bench, and not for completeness. `bench/vite.config.ts` imports @toolbench/sdk
+        # through its package name, which resolves to packages/sdk/dist, and this repository does not
+        # keep dist in git. Without this step the config itself fails to load with "Failed to resolve
+        # entry for package @toolbench/sdk", which names the package and not the missing build.
+        #
+        # Second time this bit in one day: the browser matrix in build.yml hit it by downloading only
+        # bench/dist and skipping the workspace build. Serving or building the bench needs the packages.
+        run: pnpm build
+
       - name: Build the bench for the project Pages path
         # Local `pnpm bench:build` keeps base `/` so :4173 and the browser suite
         # stay put. This job is the one that would 404 without the prefix.
