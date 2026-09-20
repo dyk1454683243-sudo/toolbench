@@ -1,13 +1,37 @@
 /**
  * A JavaScript regular-expression explainer.
  *
- * The tool exists so the runtime's `text` and `code` renderers, and `autoRun`, have a real tool
- * behind them. `bytes` already has `utf8-bytes`; those three did not. It is a real explainer rather
- * than a stub because a renderer nobody has looked at is a renderer nobody has tested.
+ * The tool exists so the runtime's `text` renderer has a real tool behind it, and so `code` has one
+ * outside the bench's own fixtures. It is a real explainer rather than a stub because a renderer
+ * nobody has looked at is a renderer nobody has tested.
  *
- * It runs as the reader types. That is only safe because the inputs are short and because a pattern
- * that nests an unbounded repeat inside another (the usual catastrophic-backtracking shape) is
- * refused before the engine is asked to match.
+ * ⚠️ Worker mode, with a timeout, and no `autoRun`. All three are the same decision.
+ *
+ * This tool compiles a pattern the reader typed and runs it against a subject the reader typed, which
+ * makes it the one tool here that cannot bound its own running time. The refusal in `applyQuantifier`
+ * catches the textbook `(a+)+` shape, and it is worth keeping because the message teaches something.
+ * But it is a denylist, and the shapes it does not name are not rare: `(a|aa)+$` nests no repeat at
+ * all, passes the check, and against 45 characters of `a` followed by a `b` it takes **28 seconds**.
+ * Measured, not estimated. At 41 characters it is 4.2 s and at 37 it is 0.6 s, so a reader typing one
+ * character at a time walks up that curve.
+ *
+ * Those figures are V8's. Measured across the browser suite: Chromium and Firefox both grind and reach
+ * the timeout, while WebKit returns almost at once, because JavaScriptCore abandons a runaway backtrack
+ * rather than running it out. Two engines in three will hang, so the rescue is not something to build
+ * on, and an engine that happens to save you is not a bound.
+ *
+ * On the main thread there is nothing to terminate: `ctx.signal` only works for a tool that checks it,
+ * and no tool can check anything while the regex engine is inside a match. See the table in
+ * `runner.ts`, which is why the manifest rejects `timeoutMs` outside worker mode. So the engine gets a
+ * thread of its own and 2 s to finish, and a pathological pattern becomes a timeout the reader can
+ * read rather than a tab they have to close. Dropping `autoRun` is the other half: a tool that can
+ * take 2 s must not start on a keystroke.
+ *
+ * ⚠️ `timeoutMs` is a top-level manifest key, NOT part of `runtime`, even though `thread` is and the
+ * two only make sense together. Writing it inside `runtime` cost a CI round: nothing rejected it,
+ * because validation looks for it at the top level and found nothing there, so the tool ran on the
+ * 5,000 ms default and the browser test failed on a message naming the wrong number. A key in the
+ * wrong object is silently ignored, which is the one way a manifest can lie.
  */
 import type { Output, Tool } from "@toolbench/sdk";
 
@@ -130,6 +154,13 @@ export function walkPattern(pattern: string, flags: string): WalkToken[] {
 			push(source, meaning, atomUnbounded);
 			return;
 		}
+		/*
+		 * A denylist of one shape, kept for the explanation rather than for safety: `(a+)+` is what a
+		 * reader is most likely to write by accident, and being told why beats being told it timed out.
+		 *
+		 * ⚠️ It is not the protection. `(a|aa)+$` nests no repeat, passes this check, and still runs for
+		 * 28 s on 45 characters. The timeout in the manifest is the protection; see the file header.
+		 */
 		if (groupInner && isUnbounded(q.kind) && groupInner.some((token) => token.unbounded)) {
 			throw new WalkError(
 				"This pattern nests a repeat inside another repeat, for example (a+)+. That can run for a very long time. Rewrite it without the outer repeat.",

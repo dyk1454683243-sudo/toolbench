@@ -2,13 +2,13 @@
   "sdk": 3,
   "id": "regex-explainer",
   "name": "Regex explainer",
-  "blurb": "Walks a JavaScript regular expression, shows what each piece means, and tests it against a subject as you type.",
+  "blurb": "Walks a JavaScript regular expression, shows what each piece means, and tests it against a subject.",
   "version": "1.0.0",
   "capabilities": ["pure"],
-  "runtime": { "entry": "index.ts", "thread": "main" },
+  "runtime": { "entry": "index.ts", "thread": "worker" },
   "kinds": ["group", "text", "code", "error"],
   "card": "live",
-  "autoRun": true,
+  "timeoutMs": 2000,
   "inputs": [
     {
       "id": "pattern",

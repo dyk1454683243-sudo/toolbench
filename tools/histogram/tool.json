@@ -8,6 +8,7 @@
   "runtime": { "entry": "index.ts", "thread": "main" },
   "kinds": ["series", "error"],
   "card": "live",
+  "autoRun": true,
   "inputs": [
     {
       "id": "values",

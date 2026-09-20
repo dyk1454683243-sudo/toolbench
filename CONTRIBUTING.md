@@ -99,8 +99,9 @@ later.
 Tools in this repository exist to exercise the runtime, not to be a collection. The ones that ship
 each cover something the others do not: `percentiles` is a main-thread group of fields and a table,
 `queue-explorer` is a worker with progress and a timeout, `utf8-bytes` is the `bytes` kind,
-`regex-explainer` is `text`, `code` and `autoRun`, and `histogram` is a series-only bar chart with
-two axes and no primary input.
+`regex-explainer` is the `text` kind, and a worker whose timeout is the point rather than an
+afterthought, and `histogram` is a bare `series` with no group around it, the `bar` shape, and no
+primary input for a card to fall back on.
 
 Start with `pnpm new-tool <id>`, then replace the starter function. The scaffold exists so the first
 two minutes are not copying boilerplate. It does not change what a tool in this repository has to cover.
