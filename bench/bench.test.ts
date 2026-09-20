@@ -18,13 +18,51 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { after, before, describe, it } from "node:test";
-import { type Browser, chromium } from "playwright";
+import { type Browser, type BrowserType, chromium, firefox, webkit } from "playwright";
 
 const PORT = 4173;
 const BASE = `http://localhost:${PORT}`;
 
+const ENGINES = { chromium, firefox, webkit } as const;
+type EngineName = keyof typeof ENGINES;
+
+/**
+ * Which engine the suite launches. CI sets this per matrix leg. Unset still means Chromium, so
+ * `pnpm test:bench` locally keeps working, and `CHROME_CHANNEL` still picks system Chrome vs the
+ * bundled Chromium.
+ */
+function requestedEngine(): EngineName {
+	/*
+	 * ⚠️ Required under CI, defaulted only locally.
+	 *
+	 * Defaulting everywhere hides the failure that matters: drop `PLAYWRIGHT_BROWSER` from the workflow and
+	 * all three legs quietly run Chromium, three green checks report cross-engine coverage that does not
+	 * exist, and the assertion below still passes because both the default and the expectation collapse to
+	 * the same value. Under CI an unset variable is a configuration bug, so it is loud.
+	 */
+	const raw = process.env.PLAYWRIGHT_BROWSER?.toLowerCase();
+	if (raw === undefined) {
+		if (process.env.CI) {
+			throw new Error("PLAYWRIGHT_BROWSER is unset under CI. Every leg would run Chromium and report as if it had not.");
+		}
+		return "chromium";
+	}
+	if (raw in ENGINES) return raw as EngineName;
+	throw new Error(`Unknown PLAYWRIGHT_BROWSER="${process.env.PLAYWRIGHT_BROWSER}". Use chromium, firefox, or webkit.`);
+}
+
+async function launchBrowser(): Promise<Browser> {
+	const name = requestedEngine();
+	const engine: BrowserType = ENGINES[name];
+	if (name === "chromium") {
+		return engine.launch({ channel: process.env.CHROME_CHANNEL ?? "chrome" });
+	}
+	return engine.launch();
+}
+
 let server: ChildProcess | undefined;
 let browser: Browser;
+let engineName: EngineName;
 
 before(async () => {
 	server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
@@ -44,12 +82,19 @@ before(async () => {
 		if (Date.now() > deadline) throw new Error("vite preview did not start");
 		await new Promise((r) => setTimeout(r, 150));
 	}
-	browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL ?? "chrome" });
+	engineName = requestedEngine();
+	browser = await launchBrowser();
 });
 
 after(async () => {
 	await browser?.close();
 	server?.kill("SIGTERM");
+});
+
+describe("the engine under test", () => {
+	it("launched the browser PLAYWRIGHT_BROWSER asked for", () => {
+		assert.equal(browser.browserType().name(), engineName);
+	});
 });
 
 describe("card mode — the facade", () => {
@@ -90,11 +135,16 @@ describe("card mode — the facade", () => {
 		 *
 		 * queue-explorer declares thread: "worker", so running it must fetch the worker copy and must
 		 * NOT fetch the main-thread copy. Fetching both would mean the code was parsed twice.
+		 *
+		 * ⚠️ Playwright's page request listener does not classify worker-module imports the same way
+		 * on every engine. Measured against this suite: Chromium emits them as `script`, WebKit as
+		 * `xhr`, and Firefox emits the worker entry but not the inner `import()`. The worker's own
+		 * performance timeline lists the chunk on all three, so that is the observation that holds.
 		 */
 		const page = await browser.newPage();
-		const scripts: string[] = [];
+		const urls: string[] = [];
 		page.on("request", (request) => {
-			if (request.resourceType() === "script") scripts.push(request.url());
+			urls.push(request.url());
 		});
 		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
 		await page.locator("#host").scrollIntoViewIfNeeded();
@@ -103,18 +153,26 @@ describe("card mode — the facade", () => {
 			timeout: 15_000,
 		});
 
-		const loaded = (re: RegExp) => scripts.filter((url) => re.test(url));
+		const workerUrls: string[] = [];
+		for (const worker of page.workers()) {
+			workerUrls.push(
+				...(await worker.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name))),
+			);
+		}
+
+		const loaded = (list: string[], re: RegExp) => list.filter((url) => re.test(url));
+		const workerTool = /\/assets\/worker-tool-queue-explorer-[^/]+\.js$/;
 		assert.equal(
-			loaded(/\/assets\/worker-tool-queue-explorer-[^/]+\.js$/).length,
+			loaded(workerUrls, workerTool).length,
 			1,
-			`the worker's copy of the tool should be fetched exactly once: ${scripts.join(", ")}`,
+			`the worker must import its copy of the tool exactly once: page=[${urls.join(", ")}] worker=[${workerUrls.join(", ")}]`,
 		);
 		assert.equal(
-			loaded(/\/assets\/tool-queue-explorer-[^/]+\.js$/).length,
+			loaded(urls, /\/assets\/tool-queue-explorer-[^/]+\.js$/).length,
 			0,
 			"the main-thread copy must never be fetched for a worker-mode tool",
 		);
-		assert.equal(loaded(/\/assets\/index-[^/]+\.js$/).length, 0, "no tool should load under an anonymous chunk name");
+		assert.equal(loaded(urls, /\/assets\/index-[^/]+\.js$/).length, 0, "no tool should load under an anonymous chunk name");
 		await page.close();
 	});
 
