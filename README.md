@@ -15,7 +15,7 @@ A tool is one function and one JSON file. Toolbench builds the form, runs it, an
 
 [![tests](https://github.com/eknowledger/toolbench/actions/workflows/tests.yml/badge.svg)](https://github.com/eknowledger/toolbench/actions/workflows/tests.yml) [![build](https://github.com/eknowledger/toolbench/actions/workflows/build.yml/badge.svg)](https://github.com/eknowledger/toolbench/actions/workflows/build.yml) [![npm](https://img.shields.io/npm/v/@toolbench/runtime?logo=npm&label=npm)](https://www.npmjs.com/package/@toolbench/runtime) [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-[![contract](https://img.shields.io/badge/contract-v3-informational)](docs/versioning.md) [![runtime size](https://img.shields.io/badge/runtime-20.2%20KB%20gzip-brightgreen)](#size-and-cost) [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#install) [![types](https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white)](packages/sdk/src/types.ts) [![node](https://img.shields.io/badge/node-%3E%3D24-5FA04E?logo=node.js&logoColor=white)](#browser-and-runtime-support) [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+[![contract](https://img.shields.io/badge/contract-v3-informational)](docs/versioning.md) [![runtime size](https://img.shields.io/badge/runtime-20.4%20KB%20gzip-brightgreen)](#size-and-cost) [![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#install) [![types](https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white)](packages/sdk/src/types.ts) [![node](https://img.shields.io/badge/node-%3E%3D24-5FA04E?logo=node.js&logoColor=white)](#browser-and-runtime-support) [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
 </div>
 
@@ -195,6 +195,8 @@ defineToolHost({
     reverse: { manifest, load: () => import("./tools/reverse/index.ts") },
   }),
   pageUrl: (id) => `/tools/${id}/`,
+  // Optional. Return a Node, never a string: the runtime will not assign innerHTML.
+  // highlight: (source, lang) => yourHighlighter(source, lang),
 });
 ```
 
@@ -356,7 +358,7 @@ tool cannot invent something nobody can render.
 | `table` | Columns and rows, with alignment and per-cell emphasis |
 | `series` | A chart with axes, legend and annotations. Ships the same numbers as a table for readers who cannot see it |
 | `text` | Prose or preformatted output |
-| `code` | Source, with a language tag the host can highlight |
+| `code` | Source, with a language tag. The runtime renders preformatted text. A host that already has a highlighter passes `highlight?: (source, lang) => Node` to `defineToolHost` |
 | `bytes` | Raw bytes as a reader of a wire format wants them: offsets, hex, a printable gutter, and named ranges that can wrap a row |
 | `group` | Several of the above in one result. A decoder that returns fields *and* a table is the common case |
 | `error` | The input was wrong. Naming the input marks that control invalid and attaches the message to it |
@@ -422,7 +424,7 @@ Measured on the built bench with gzip, not estimated:
 
 | | Transfer |
 |---|---|
-| Runtime plus the bench's page wiring, once per page that uses a tool | 20.2 KB |
+| Runtime plus the bench's page wiring, once per page that uses a tool | 20.4 KB |
 | Worker entry, only for pages with a worker-mode tool | 3.0 KB |
 | `percentiles` tool chunk | 1.2 KB |
 | `queue-explorer` tool chunk | 1.2 KB |

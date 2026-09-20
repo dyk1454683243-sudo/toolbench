@@ -18,6 +18,9 @@ defineToolHost({
     reverse: { manifest, load: () => import("./tools/reverse/index.ts") },
   }),
   pageUrl: (id) => `/tools/${id}/`,
+  // Optional. Paint `code` results with the highlighter you already have.
+  // Return a Node, never a string: the runtime will not assign innerHTML.
+  // highlight: (source, lang) => yourHighlighter(source, lang),
 });
 ```
 
@@ -49,6 +52,8 @@ host.run();
   thread, and a runaway loop is terminated instead of freezing the page.
 * **Styles that cannot collide.** Everything renders in a shadow root. Theming is a dozen CSS custom
   properties, and that list is the whole styling API.
+* **Host-owned syntax highlighting.** Pass `highlight?: (source, lang) => Node` to paint `code`
+  results with the highlighter you already have. Omit it and the source stays readable plain text.
 
 ## Size
 

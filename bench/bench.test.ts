@@ -1227,3 +1227,123 @@ describe("accessibility wiring", () => {
 		await page.close();
 	});
 });
+
+describe("host code highlight hook", () => {
+	/*
+	 * The expected source is JSON.stringify(JSON.parse('{"ok":true,"n":3}'), null, 2), written out
+	 * by hand from that spec, not captured from a run. The fixture's default is that object.
+	 */
+	const pretty = '{\n  "ok": true,\n  "n": 3\n}';
+
+	it("receives (source, lang) and puts the returned Node in the DOM", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+		const painted = await page.evaluate(() => {
+			const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+			const block = root?.querySelector(".tb-out-code");
+			const hook = root?.querySelector("[data-highlight-hook]");
+			return {
+				lang: block?.getAttribute("data-lang") ?? "",
+				hookLang: hook?.getAttribute("data-highlight-lang") ?? "",
+				text: hook?.textContent ?? "",
+				tokens: [...(hook?.querySelectorAll("[data-tok]") ?? [])].map((el) => ({
+					kind: el.getAttribute("data-tok"),
+					text: el.textContent,
+				})),
+				directTextChild: hook?.firstChild?.nodeType === Node.TEXT_NODE && hook.childNodes.length === 1,
+			};
+		});
+
+		assert.equal(painted.lang, "json", "the renderer still sets data-lang");
+		assert.equal(painted.hookLang, "json", "the hook must see the language tag");
+		assert.equal(painted.text, pretty, "the hook must see the source, and the Node must keep it readable");
+		assert.equal(painted.directTextChild, false, "the text node was replaced, not left as a single text child");
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "string" && t.text === '"ok"'),
+			`expected a string token for "ok", got ${JSON.stringify(painted.tokens)}`,
+		);
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "keyword" && t.text === "true"),
+			`expected a keyword token for true, got ${JSON.stringify(painted.tokens)}`,
+		);
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "number" && t.text === "3"),
+			`expected a number token for 3, got ${JSON.stringify(painted.tokens)}`,
+		);
+		await page.close();
+	});
+
+	it("still renders readable plain text when the host omits the hook", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html?code=plain`, { waitUntil: "load" });
+		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+		const plain = await page.evaluate(() => {
+			const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+			const code = root?.querySelector(".tb-out-code code");
+			return {
+				lang: root?.querySelector(".tb-out-code")?.getAttribute("data-lang") ?? "",
+				text: code?.textContent ?? "",
+				hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+				onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+			};
+		});
+
+		assert.equal(plain.lang, "json");
+		assert.equal(plain.text, pretty, "without a hook the source is still there as preformatted text");
+		assert.equal(plain.hook, false, "the demo highlighter must not run");
+		assert.equal(plain.onlyText, true, "the existing path is a single text node inside <code>");
+		await page.close();
+	});
+
+	/*
+	 * A hook is host code, so the runtime has to keep drawing something readable whatever it is handed. Both
+	 * fallbacks are four lines in `renderCode` that anybody would assume work; neither had a test. The bench
+	 * installs a deliberately broken hook behind `?code=`, chosen inside `highlight.ts` so those instruments
+	 * stay out of the chunk the README publishes.
+	 */
+	for (const [mode, what] of [
+		["throw", "a hook that throws"],
+		["string", "a hook that returns a string instead of a node"],
+	] as const) {
+		it(`falls back to plain text when the host passes ${what}`, async () => {
+			const page = await browser.newPage();
+			const errors: string[] = [];
+			page.on("pageerror", (error) => errors.push(String(error)));
+			await page.goto(`${BASE}/index.html?code=${mode}`, { waitUntil: "load" });
+			const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+			await host.scrollIntoViewIfNeeded();
+			await host.locator(".tb-run").click();
+			await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+			const shown = await page.evaluate(() => {
+				const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+				const code = root?.querySelector(".tb-out-code code");
+				return {
+					text: code?.textContent ?? "",
+					hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+					onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+				};
+			});
+			// The same hand-derived expectation the no-hook test uses: a broken hook must be indistinguishable
+			// from no hook at all, which is a stronger claim than "something readable appeared".
+			assert.equal(shown.text, pretty, `a broken hook must fall back to the exact source: ${JSON.stringify(shown.text)}`);
+			assert.equal(shown.onlyText, true, "the fallback is a text node, not partially built markup");
+			assert.equal(shown.hook, false, "no hook marker, because the hook's output was discarded");
+			// A string return must not be parsed as markup, which is the reason the hook returns a Node.
+			assert.doesNotMatch(shown.text, /<em>/, "a string return must never reach the DOM as markup");
+			assert.deepEqual(errors, [], "a broken hook must not surface as an uncaught page error");
+			await page.close();
+		});
+	}
+});

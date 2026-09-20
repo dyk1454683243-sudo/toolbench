@@ -326,7 +326,9 @@ opt-in and has to justify itself:
 * the state machine: facade, loading, idle, running, result, stale, error;
 * accessibility: label association, `aria-describedby`, `aria-invalid` driven by `error.input`, a
   `role="status"` region carrying a short summary, focus moved only on an explicit run;
-* teardown, which is what stops a worker leaking on client-side navigation.
+* teardown, which is what stops a worker leaking on client-side navigation;
+* an optional `highlight` hook on `defineToolHost`, so a host can paint `code` results without the
+  runtime bundling a highlighter. The hook returns a `Node`, not a string.
 
 **`runner.ts`** executes. Its whole job is the difference between "call a function" and "call a
 function that might not come back":
@@ -740,7 +742,7 @@ Five layers. Each catches something the others structurally cannot.
 | `packages/runtime/src/*.test.ts` | Node | Coerce and the partial merge used by typing, samples, and the host `values` setter: clamp, refuse, truncate, unknown ids | 9 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 38 |
+| `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 42 |
 
 `pnpm coverage` runs the Node rows of that table with Node's built-in test coverage (the same
 collector as `--experimental-test-coverage`) and prints the uncovered lines and branches. It does not
@@ -771,7 +773,9 @@ production build:
   fresh worker;
 * a crash reads differently from bad input, and bad input marks the right control invalid;
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
-* theming through custom properties only.
+* theming through custom properties only;
+* a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps
+  readable plain text.
 
 Two habits worth keeping. **Test against the built artifact**, because a minifier deleted a loop that
 made a timeout test pass for the wrong reason (§14). And **assert an allowlist rather than a denylist**
@@ -785,7 +789,7 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 20.2 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, and 0.6 KB with the host `values` and `run()` API |
+| Runtime plus the bench's own wiring | 20.4 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, 0.6 KB with the host `values` and `run()` API, and 0.1 KB with the host `highlight` hook |
 | Stylesheet | 0.9 KB | |
 | Worker entry | 3.0 KB | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
@@ -797,16 +801,19 @@ Where the budget is spent: about half the runtime chunk is the chart renderer an
 that becomes a problem the chart is the obvious thing to split into its own lazily-imported chunk, since
 most tools never draw one.
 
-That chunk now measures 20,229 bytes against a 20,500 byte ceiling, so the next thing that costs real
+That chunk now measures 20,360 bytes against a 20,500 byte ceiling, so the next thing that costs real
 bytes either buys them explicitly, by raising the budget in the commit that spends it and moving this
-table with it, or takes the chart split above. The ceiling was 19,500 until the richer-card work left 46
+table with it, or takes the chart split above. The `highlight` hook cost 368 gzipped bytes and stayed
+under the existing ceiling. The demo highlighter is a separate `bench-highlight` chunk (551 bytes),
+not in `boot`. The ceiling was 19,500 until the richer-card work left 46
 bytes under it, which is not headroom; the reason is recorded beside the budget in `scripts/size-check.mjs`
 rather than only here.
 
-The host `values` and `run()` API cost 567 of those bytes, measured against `main` after the bench
-fixtures were split out, which leaves 271 bytes free. That is not much, and it is worth knowing which
-way the next spend goes: splitting the chart renderer is the lever with real room behind it, and the
-fixture split is already spent.
+The host `values` and `run()` API cost 567 of those bytes and the `highlight` hook 131, measured after the
+bench fixtures were split out, which leaves 140 bytes free. That is not headroom, and the levers left are
+narrow: the fixture split is already spent, and §13's chart-renderer split was measured and argued against
+separately. The next change that costs real bytes should expect to raise the ceiling and say what bought
+them.
 
 **What the figure deliberately excludes.** A test instrument that no consumer ships does not belong in a
 number a consumer reads, so two of them are split into their own chunks with their own budget lines: the
@@ -864,8 +871,10 @@ Known and accepted, with what each costs.
 * **No sandbox.** A tool runs with the page's privileges. Worker mode isolates the *thread*, not the
   origin: it shares cookies and does not inherit the page's Content-Security-Policy. Fine for code you
   wrote; not fine for code you did not.
-* **No syntax highlighting for `code` results.** The `data-lang` attribute is a hook for a host that
-  already has a highlighter. Bundling one would double the runtime.
+* **No bundled syntax highlighter.** `code` results stay readable as preformatted text with
+  `data-lang` set. A host that already has a highlighter passes `highlight` to `defineToolHost`. The
+  hook returns a `Node`, not a string, so the runtime never assigns `innerHTML`. Bundling one would
+  roughly double the runtime.
 * **The chart is deliberately simple.** No tooltips, no zoom, no time axis. It draws what `Chart`
   describes.
 * **`RegistrySource` is eager about manifests.** Every manifest is parsed and validated at startup.
@@ -992,7 +1001,7 @@ declaration, so browsers without that function get the light palette rather than
 
 | Export | Kind |
 |---|---|
-| `defineToolHost`, `ToolHost`, `ToolHostConfig`, `Mode` | the element |
+| `defineToolHost`, `ToolHost`, `ToolHostConfig`, `Mode` | the element. `ToolHostConfig.highlight` is the optional host highlighter for `code` results |
 | `RegistrySource`, `ToolSource`, `RegistryEntry`, `ToolNotFoundError` | sources |
 | `Runner`, `RunHooks`, `RunnerOptions`, `isSuperseded` | execution |
 | `ToolTimeoutError`, `ToolCrashError`, `WorkerUnavailableError`, `Request`, `Response` | protocol |

@@ -1,0 +1,25 @@
+{
+	"sdk": 1,
+	"id": "json-code",
+	"name": "JSON as code",
+	"blurb": "Pretty-prints JSON as a code result so a host highlighter has something to paint.",
+	"version": "1.0.0",
+	"capabilities": ["pure"],
+	"runtime": { "entry": "index.ts", "thread": "main" },
+	"autoRun": true,
+	"card": "live",
+	"kinds": ["code", "error"],
+	"tags": ["bench"],
+	"inputs": [
+		{
+			"id": "json",
+			"type": "textarea",
+			"label": "JSON",
+			"description": "Pasted JSON is pretty-printed and returned as a code result.",
+			"primary": true,
+			"rows": 4,
+			"maxLength": 4000,
+			"default": "{\"ok\":true,\"n\":3}"
+		}
+	]
+}

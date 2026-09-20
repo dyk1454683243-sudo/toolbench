@@ -34,7 +34,7 @@
  */
 import type { InputSpec, InputValues, Manifest, Output, Sample } from "@toolbench/sdk";
 import { el, fill } from "./dom.ts";
-import { render, unknownOutput } from "./render/index.ts";
+import { render, unknownOutput, type RenderOptions } from "./render/index.ts";
 import { ToolCrashError, ToolTimeoutError, WorkerUnavailableError } from "./protocol.ts";
 import { isSuperseded, Runner, type Runnable } from "./runner.ts";
 import { type ToolSource } from "./sources.ts";
@@ -57,6 +57,14 @@ export interface ToolHostConfig {
 	rootMargin?: string;
 	/** Milliseconds of quiet before a typed change runs. Default 150. */
 	debounceMs?: number;
+	/**
+	 * Paint a `code` result with the host's own highlighter.
+	 *
+	 * The runtime does not bundle one: that would roughly double the package, and a host usually
+	 * already has one. Return a `Node`, not a string. A string-returning hook would need
+	 * `innerHTML`, which SECURITY.md forbids. Omit the hook to keep readable preformatted text.
+	 */
+	highlight?: (source: string, lang: string) => Node;
 }
 
 let config: ToolHostConfig | undefined;
@@ -475,11 +483,14 @@ export class ToolHost extends HTMLElement {
 				{ class: "tb-body" },
 				mode === "page" ? null : el("p", { class: "tb-blurb" }, manifest.blurb),
 				this.#seed
-					? render(this.#seed, {
-							compact,
-							cardParts: this.cardParts,
-							...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
-						})
+					? render(
+							this.#seed,
+							withHostHighlight({
+								compact,
+								cardParts: this.cardParts,
+								...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
+							}),
+						)
 					: null,
 				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : hint),
 			);
@@ -778,11 +789,14 @@ export class ToolHost extends HTMLElement {
 		try {
 			fill(
 				target,
-				render(output, {
-					compact,
-					cardParts: this.cardParts,
-					...(manifest?.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
-				}),
+				render(
+					output,
+					withHostHighlight({
+						compact,
+						cardParts: this.cardParts,
+						...(manifest?.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
+					}),
+				),
 			);
 		} catch {
 			// A kind this build cannot draw: an old runtime meeting a newer tool.
@@ -860,6 +874,15 @@ export class ToolHost extends HTMLElement {
 		fill(this.#root, el("div", { class: "tb" }, el("div", { class: "tb-body" }, message_el)));
 		this.#reapplyStyles();
 	}
+}
+
+/**
+ * Thread the host highlighter into a render call without writing `highlight: undefined`.
+ * `exactOptionalPropertyTypes` refuses that, and omitting the key is what "no hook" means.
+ */
+function withHostHighlight(options: RenderOptions): RenderOptions {
+	const highlight = config?.highlight;
+	return highlight ? { ...options, highlight } : options;
 }
 
 /**

@@ -7,6 +7,7 @@
  *     source: new RegistrySource({
  *       percentiles: { manifest, load: () => import("./tools/percentiles/index.ts") },
  *     }),
+ *     highlight: (source, lang) => yourHighlighter(source, lang), // optional, returns a Node
  *   });
  *
  * Then anywhere in the page:  <tool-host tool="percentiles" mode="page"></tool-host>

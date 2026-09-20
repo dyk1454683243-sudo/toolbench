@@ -57,10 +57,23 @@ const BUDGETS = [
 	 */
 	{ label: "bench fixtures", pattern: /^bench-fixtures-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 	{ label: "bench fixtures, worker copy", pattern: /^worker-bench-fixtures-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	/*
+	 * The demo highlighter passed to `defineToolHost({ highlight })`. Host-only, split out of `boot` for
+	 * the same reason as the theme switch: a consumer does not download it.
+	 */
+	{ label: "bench highlighter", pattern: /^bench-highlight-[^/]+\.js$/, budget: 1_500, deployOnly: true },
 	{ label: "stylesheet", pattern: /^boot-[^/]+\.css$/, budget: 1_200 },
 	{ label: "worker entry", pattern: /^tool\.worker-[^/]+\.js$/, budget: 4_000 },
 	{ label: "tool: percentiles", pattern: /^tool-percentiles-[^/]+\.js$/, budget: 2_000 },
 	{ label: "tool: queue-explorer", pattern: /^tool-queue-explorer-[^/]+\.js$/, budget: 2_000 },
+	/*
+	 * ⚠️ The two bench FIXTURES, measured but deployOnly, and labelled so nobody mistakes them for shipped
+	 * tools. `json-code` arrived counted as reader cost, which would have put a chunk only the bench
+	 * downloads into the "worst case for one reader" total, and `stress` had no line at all so it could grow
+	 * unwatched. A fixture is an instrument: track it, never charge a consumer for it.
+	 */
+	{ label: "bench fixture: json-code", pattern: /^tool-json-code-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	{ label: "bench fixture: stress", pattern: /^tool-stress-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 	/*
 	 * The worker's own copies. Vite builds the worker in a separate Rollup pass, so every tool
 	 * reachable from it is emitted twice. A reader downloads one copy (a tool declares one thread);
@@ -69,6 +82,8 @@ const BUDGETS = [
 	 */
 	{ label: "worker copy: percentiles", pattern: /^worker-tool-percentiles-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 	{ label: "worker copy: queue-explorer", pattern: /^worker-tool-queue-explorer-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	{ label: "worker copy: json-code", pattern: /^worker-tool-json-code-[^/]+\.js$/, budget: 2_000, deployOnly: true },
+	{ label: "worker copy: bench fixture stress", pattern: /^worker-tool-stress-[^/]+\.js$/, budget: 2_000, deployOnly: true },
 ];
 
 let files;
