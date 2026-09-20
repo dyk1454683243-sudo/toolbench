@@ -742,7 +742,7 @@ Six layers. Each catches something the others structurally cannot.
 | `packages/runtime/src/*.test.ts` | Node | Coerce and the partial merge used by typing, samples, and the host `values` setter: clamp, refuse, truncate, unknown ids | 9 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
-| `scripts/*.test.ts` | Node | The repo's own tooling, where getting it wrong is silent: that `pnpm new-tool` emits a tool which passes the harness unedited and matches its golden fixtures byte for byte, and that the fixture declares the current contract version rather than a literal | 13 |
+| `scripts/*.test.ts` | Node | The repo's own tooling, where getting it wrong is silent: that `pnpm new-tool` emits a tool which passes the harness unedited and matches its golden fixtures byte for byte, and that the fixture declares the current contract version rather than a literal | 20 |
 | `bench/bench.test.ts` | Chrome, against the **built** bench | Everything a unit test cannot see | 42 |
 
 The Count column is measured, not maintained: `pnpm test:counts` runs each layer and reports what the table
@@ -897,7 +897,9 @@ Known and accepted, with what each costs.
   manifests, two inputs each. Three consecutive process runs, 21 timed constructions after 5
   warmups, had medians of 0.71 ms, 0.98 ms and 0.77 ms (lowest sample 0.47 ms, highest 1.96 ms).
   Under a millisecond at several hundred tools, so the constructor stays eager. Revisit if a host
-  is in the thousands. The script times `new RegistrySource` only. Generation sits outside the
+  is in the thousands. Re-measured on review, Node v26.7.0 on an Apple M3 Pro: median 0.33 ms over the
+  same 500. Two machines an order of magnitude apart in this figure both land well under the bar, which
+  is what makes the conclusion safe to rest on rather than a property of one laptop. The script times `new RegistrySource` only. Generation sits outside the
   timed region, and so does JSON.parse: a host already has objects when it constructs the source.
 * **The `series` renderer stays in the boot chunk, for now.** A dynamic import of `render/chart.ts` saves
   1,521 bytes gzip against the roughly 3 KB bar issue #12 set, so the complexity is not yet worth it. The

@@ -14,13 +14,14 @@
  * The manifests are already objects, which is what a host hands the constructor after
  * the bundler has parsed `tool.json`. JSON.parse is not part of this cost.
  */
-import { register } from "node:module";
+import { registerHooks } from "node:module";
 import { cpus, platform, arch } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { sdkSourceHooks } from "./resolve-sdk-source.mjs";
 import { SDK_VERSION } from "../packages/sdk/src/version.ts";
 
-register(new URL("./resolve-sdk-source.mjs", import.meta.url));
+registerHooks(sdkSourceHooks);
 
 /** The count issue #17 asked for. */
 export const COUNT = 500;
