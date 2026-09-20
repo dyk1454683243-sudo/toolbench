@@ -59,7 +59,21 @@ The tool has no idea it is on the web. The website needs no framework.
 ## Live demo
 
 The same bench this repository builds is hosted at
-[eknowledger.github.io/toolbench](https://eknowledger.github.io/toolbench/).
+[eknowledger.github.io/toolbench](https://eknowledger.github.io/toolbench/). Four pages,
+because the display modes are four different situations and one page would let a bug in
+one hide behind another:
+
+| Page | What it shows |
+|---|---|
+| [Gallery](https://eknowledger.github.io/toolbench/) | The example tools as cards, each loading nothing until it is clicked. Below them, a highlighted code result and the two lifecycle states, `deprecated` and `retired`. |
+| [Full page](https://eknowledger.github.io/toolbench/tool.html?id=percentiles) | One tool on its own route, with its help text and its sample inputs. |
+| [In an article](https://eknowledger.github.io/toolbench/article.html) | Embed mode: two tools inside prose, inheriting the page's type. |
+| [When a tool fails](https://eknowledger.github.io/toolbench/failure.html) | A tool that spins forever, throws, or ignores cancellation, and a `tool` attribute naming an id that does not exist. |
+
+The badly behaved fixtures are on their own page, and the card grid filters them out along
+with anything not `live`. A first visitor to the demo should not meet a tool whose job is to
+time out, or be offered a retired one as though it were current.
+
 That is a GitHub **project** Pages site, so Vite `base` is `/toolbench/`. Local
 `pnpm bench` and `pnpm bench:build` keep `base` at `/`, which is why
 http://localhost:5180 still works. Set `BENCH_BASE=/toolbench/` to preview the
