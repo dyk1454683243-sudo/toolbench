@@ -746,12 +746,12 @@ Six layers. Each catches something the others structurally cannot.
 
 | Layer | Where it runs | What it covers | Count |
 |---|---|---|---|
-| `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 84 |
+| `packages/sdk/src/*.test.ts` | Node | Manifest validation and every invariant, the migration chain both synthetically and against the real `1 → 3` steps, seeding, the tool-directory harness's failure modes, and fixture comparison including its guard rails | 87 |
 | `packages/runtime/src/*.test.ts` | Node | Coerce and the partial merge used by typing, samples, and the host `values` setter: clamp, refuse, truncate, unknown ids | 9 |
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
 | `scripts/*.test.ts` | Node | The repo's own tooling, where getting it wrong is silent: that `pnpm new-tool` emits a tool which passes the harness unedited and matches its golden fixtures byte for byte, and that the fixture declares the current contract version rather than a literal | 20 |
-| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 45 |
+| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 49 |
 
 The Count column is measured, not maintained: `pnpm test:counts` runs each layer and reports what the table
 says beside what it found, and `--update` rewrites the cells. It exists because these numbers changed on
@@ -808,9 +808,9 @@ table cannot quietly stop being true.
 
 | Item | Transfer | Notes |
 |---|---|---|
-| Runtime plus the bench's own wiring | 19.0 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, 0.6 KB with the host `values` and `run()` API, and 0.1 KB with the host `highlight` hook |
+| Runtime plus the bench's own wiring | 19.6 KB | One chunk, once per page that uses a tool. Grew 1.5 KB with contract v2's bytes renderer, 0.9 KB with contract v3's sample row, 0.5 KB with richer cards, 0.6 KB with the host `values` and `run()` API, and 0.1 KB with the host `highlight` hook |
 | Stylesheet | 0.9 KB | |
-| Worker entry | 3.0 KB | Only on pages with a worker-mode tool, and only after activation |
+| Worker entry | 3.1 KB | Only on pages with a worker-mode tool, and only after activation |
 | `percentiles` chunk | 1.2 KB | |
 | `queue-explorer` chunk | 1.2 KB | |
 | A page with no tool | 0 bytes | Nothing is imported |
@@ -828,16 +828,23 @@ that `#draw` catches. Measured: `boot` 20,360 to 18,988, a saving of 1,372 bytes
 chunk that only a page with a chart tool downloads. The ceiling came down from 20,500 to 19,500 with it,
 because a ceiling that only ever rises stops being a constraint.
 
-That chunk now measures 20,360 bytes against a 20,500 byte ceiling, leaving 140 bytes. So the next thing
-that costs real bytes either buys them explicitly, by raising the budget in the commit that spends it and
-moving this table with it, or takes the chart split described above.
+That chunk now measures 19,637 bytes against a 20,000 byte ceiling, leaving 363 bytes. So the next thing
+that costs real bytes buys them explicitly, by raising the budget in the commit that spends it and moving this
+table with it. The chart split was the obvious lever and it has been taken, so the next one will have to be
+argued rather than reached for.
 
-Measured on this tree rather than remembered, since two of these figures were wrong until somebody
-re-measured: the host `values` and `run()` API cost 567 gzipped bytes and the `highlight` hook 131. The demo
-highlighter is not in `boot` at all: it is a `bench-highlight` chunk of 668 bytes, alongside `bench-fixtures`
-at 810, both `deployOnly` because a consumer downloads neither. The ceiling was 19,500 until the richer-card
-work left 46 bytes under it, which is not headroom; the reason is recorded beside the budget in
-`scripts/size-check.mjs` rather than only here.
+Worth following the last two changes together, because in isolation each looks like the figure going the wrong
+way. Splitting the chart renderer took `boot` from 20,360 to 18,988 and the ceiling from 20,500 to 19,500.
+Honouring `status` then cost 649 bytes, 137 over that new ceiling, so the ceiling went to 20,000. Net: the
+figure a consumer reads is **lower than before either change**, 19,637 against 20,360, while the runtime gained
+a feature. That is the shape to aim for, and it only worked because the saving was measured before it was
+spent.
+
+Measured on this tree rather than remembered, since several of these figures have been wrong at some point: the
+host `values` and `run()` API cost 567 gzipped bytes, the `highlight` hook 131, and honouring `status` 649. The
+demo highlighter is not in `boot` at all: it is a `bench-highlight` chunk of 668 bytes, alongside
+`bench-fixtures` at 1,267 and the `chart` renderer at 1,970. The first two are `deployOnly` because a consumer
+downloads neither; the chart chunk is not, because a reader of a chart tool does.
 
 The host `values` and `run()` API cost 567 of those bytes and the `highlight` hook 131, measured after the
 bench fixtures were split out, which leaves 140 bytes free. That is not headroom, and the levers left are
