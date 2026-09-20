@@ -1269,7 +1269,9 @@ describe("lifecycle status", () => {
 		// The name is a link on every compact card. The foot is the extra affordance a
 		// deprecated card has instead of a click-to-activate facade.
 		assert.equal(
-			await card.locator('.tb-foot a[href="/tool.html?id=deprecated"]').count(),
+			// Relative, not origin-absolute: the bench's pageUrl is `./tool.html` so the same markup works
+			// at `/` locally and under a project Pages path. An absolute href would 404 there.
+			await card.locator('.tb-foot a[href="./tool.html?id=deprecated"]').count(),
 			1,
 			"the way to run it is the full page",
 		);
@@ -1575,6 +1577,8 @@ describe("host code highlight hook", () => {
 			await page.close();
 		});
 	}
+
+});
 
 describe("live demo", () => {
 	it("keeps the stress fixture off the landing page", async () => {

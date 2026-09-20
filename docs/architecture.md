@@ -762,7 +762,7 @@ Six layers. Each catches something the others structurally cannot.
 | `tools/cases.test.ts` | Node | Every tool's manifest, that `id` matches its directory, that fixtures exist and are non-empty, that declared `kinds` match the cases, every case, and every sample. Three lines calling `checkToolDirectory`, so it is the same suite a host gets | 13 |
 | `tools/*/‌*.test.ts` | Node | A tool's own properties. The queue explorer asserts that its simulation converges on the closed form, that it is deterministic, and that Little's law holds | 7 |
 | `scripts/*.test.ts` | Node | The repo's own tooling, where getting it wrong is silent: that `pnpm new-tool` emits a tool which passes the harness unedited and matches its golden fixtures byte for byte, and that the fixture declares the current contract version rather than a literal | 20 |
-| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 49 |
+| `bench/bench.test.ts` | Chromium, Firefox and WebKit, against the **built** bench | Everything a unit test cannot see | 55 |
 
 The Count column is measured, not maintained: `pnpm test:counts` runs each layer and reports what the table
 says beside what it found, and `--update` rewrites the cells. It exists because these numbers changed on
@@ -800,12 +800,9 @@ production build:
 * a tool that spins forever is killed by the timeout, the page stays responsive, and the next run gets a
   fresh worker;
 * a crash reads differently from bad input, and bad input marks the right control invalid;
-<<<<<<< HEAD
 * a retired tool never fetches its code, explains, and renders its links; a deprecated tool is marked,
   still runs on its page, and is not a live card;
-=======
 * the landing page has no stress host, in-page nav stays relative, and each tool links at `tools/<id>/`;
->>>>>>> 936451b (docs: record the six live-demo browser tests)
 * labels, `aria-describedby` targets that exist, the status region, bounded number inputs;
 * theming through custom properties only;
 * a host `highlight` hook replaces the `code` text node with the returned Node, and omitting it keeps
