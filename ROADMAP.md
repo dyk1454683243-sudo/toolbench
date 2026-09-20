@@ -60,9 +60,14 @@ A `file` input is filed as a spike rather than a feature, because it is the firs
 "a tool is a function of its declared inputs" property that fixtures and seeding both rest on. Four
 questions need answering before any code.
 
-Splitting the chart renderer into its own chunk is filed as "measure, then probably close". It became
-more interesting after contract v2, which added about 1.5 KB to the runtime for a renderer most tools
-never use: the same argument now applies twice.
+Splitting the chart renderer was measured and not taken. A dynamic import of `render/chart.ts` drops the
+boot chunk by 1,521 bytes gzip, from 20,360 to 18,839, emitting a 1,972 byte chart chunk. The bar was about
+3 KB, so it stays where it is for now.
+
+⚠️ Not taken is not the same as closed, and the difference matters here. The bar was set when the boot chunk
+had room; it now has 140 bytes. This is the largest single lever available, so the measurement is on record
+precisely so the choice between pulling it and raising the ceiling can be made in minutes rather than
+re-argued. The numbers are in [architecture.md §13](docs/architecture.md#13-performance-budget).
 
 ## [1.0.0 - stable API](https://github.com/eknowledger/toolbench/milestone/4)
 
@@ -70,13 +75,14 @@ The criteria are in [releasing.md §4](docs/releasing.md#4-the-road-to-10). The 
 newcomer can ship a tool without asking anyone; everything else is a number.
 
 Grouped here: verifying the support claim instead of asserting it (Firefox and WebKit in CI), a real
-screen-reader pass rather than wiring assertions, coverage reporting, and several open questions that
-should be answered and written down even if the answer is "no": whether the chart renderer is worth
-splitting, whether the worker's duplicate chunks are avoidable, whether a `net` capability belongs here
-at all.
+screen-reader pass rather than wiring assertions, coverage reporting, and open questions that should
+be answered and written down even if the answer is "no": whether the worker's duplicate chunks are
+avoidable, whether a `net` capability belongs here at all.
 
-Two of those are deliberately framed as "measure, then probably close". A limitation with a number
-attached is useful. A limitation with a shrug attached invites the same conversation every six months.
+The chart-renderer split was the other "measure, then probably close" item. It is closed: 1,528 bytes
+gzip, under the bar. See [architecture.md §13](docs/architecture.md#13-performance-budget). A
+limitation with a number attached is useful. A limitation with a shrug attached invites the same
+conversation every six months.
 
 ## Deliberately not planned
 
