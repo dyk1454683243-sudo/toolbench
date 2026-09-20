@@ -662,6 +662,245 @@ describe("sample inputs — contract version 3", () => {
 	});
 });
 
+describe("host values and run — runtime API", () => {
+	/*
+	 * A host example button cannot reach the form: it lives in the shadow root. `values` and `run()`
+	 * are the primitive that makes those buttons possible without every tool reimplementing examples
+	 * as a select. Node can prove coerce and the partial merge. Whether a write reaches the controls,
+	 * whether it runs the tool, whether a still-closed card accepts it, and whether `run()` after it
+	 * produces a result are browser facts.
+	 */
+	type HostApi = HTMLElement & {
+		values: Record<string, string | number | boolean>;
+		run: (options?: { focus?: boolean }) => Promise<void>;
+	};
+
+	/*
+	 * Focus follows the person who acted. A reader pressing Run is asking to be taken to the answer; a page
+	 * calling run() on load is not, and moving focus there drops the reader out of whatever they were doing.
+	 * Asserted in both directions, because the default is the one a host gets by accident.
+	 */
+	it("leaves focus alone when the host runs it, and moves it only when asked", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const quiet = await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot as ShadowRoot;
+			(root.querySelector(".tb-textarea") as HTMLTextAreaElement).focus();
+			const before = root.activeElement?.className ?? "";
+			await host.run();
+			return { before, after: root.activeElement?.className ?? "", drawn: (root.querySelector(".tb-output")?.children.length ?? 0) > 0 };
+		});
+		assert.ok(quiet.drawn, "the host's run must still produce a result");
+		assert.equal(quiet.after, quiet.before, `run() must not move focus: ${quiet.before} -> ${quiet.after}`);
+
+		const asked = await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot as ShadowRoot;
+			(root.querySelector(".tb-textarea") as HTMLTextAreaElement).focus();
+			await host.run({ focus: true });
+			return root.activeElement?.className ?? "";
+		});
+		assert.match(asked, /tb-output/, "run({ focus: true }) is how a host opts into being taken to the result");
+		await page.close();
+	});
+
+	it("applies a partial set and does not run the tool", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		const before = await page.locator("#host >> .tb-textarea").inputValue();
+
+		const after = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { method: "linear" };
+			const root = host.shadowRoot;
+			return {
+				values: (root?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "",
+				method: (root?.querySelector(".tb-select") as HTMLSelectElement | null)?.value ?? "",
+				results: root?.querySelector(".tb-output")?.children.length ?? -1,
+				snapshot: { ...host.values },
+			};
+		});
+
+		assert.equal(after.values, before, "an input the host did not name keeps its current value");
+		assert.equal(after.method, "linear", "the named input is written into the live control");
+		assert.equal(after.results, 0, "setting values must not run the tool");
+		assert.equal(after.snapshot.method, "linear", "the getter returns the applied value");
+		assert.equal(after.snapshot.values, before, "and the input the host left alone");
+		await page.close();
+	});
+
+	it("clamps and refuses the way typing does", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=queue-explorer`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const clamped = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { arrivals: 99999, service: -10, samples: 50, seed: 42 };
+			const root = host.shadowRoot;
+			const numberAt = (id: string) => Number((root?.querySelector(`#${id}`) as HTMLInputElement | null)?.value);
+			return {
+				arrivals: numberAt("in-arrivals"),
+				service: numberAt("in-service"),
+				samples: numberAt("in-samples"),
+				seed: numberAt("in-seed"),
+				fromGetter: host.values,
+			};
+		});
+
+		assert.equal(clamped.arrivals, 5000, "a number above max clamps, it is not trusted");
+		assert.equal(clamped.service, 0.1, "a number below min clamps");
+		assert.equal(clamped.samples, 1000, "same for a different input's min");
+		assert.equal(clamped.seed, 42, "an in-range value is kept");
+		assert.equal(clamped.fromGetter.arrivals, 5000, "the getter sees the clamped value, not the raw one");
+		await page.close();
+	});
+
+	it("refuses an invalid select and truncates text to maxLength", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+
+		const select = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { method: "bogus" };
+			return (host.shadowRoot?.querySelector(".tb-select") as HTMLSelectElement | null)?.value ?? "";
+		});
+		assert.equal(select, "nearest", "an option the tool does not declare falls back to the default");
+
+		await page.goto(`${BASE}/tool.html?id=utf8-bytes`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		const truncated = await page.locator("#host").evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { text: "x".repeat(600) };
+			return ((host.shadowRoot?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "").length;
+		});
+		assert.equal(truncated, 512, "a string longer than maxLength is cut, the same limit typing hits");
+		await page.close();
+	});
+
+	it("marks an existing result stale and leaves it on screen", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=percentiles`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.locator("#host >> .tb-run").click();
+		await page.locator("#host >> .tb-out-fields").first().waitFor({ timeout: 15_000 });
+		const drawn = await page.locator("#host >> .tb-output").textContent();
+
+		await page.locator("#host").evaluate((el) => {
+			(el as HostApi).values = { values: "1 2 3 4 5" };
+		});
+		await page.waitForTimeout(400);
+
+		assert.equal(await page.locator("#host >> .tb-output[data-stale]").count(), 1, "the old result belongs to the old inputs");
+		assert.equal(await page.locator("#host >> .tb-run[data-attention]").count(), 1, "and Run is where the reader has to go next");
+		assert.equal(
+			await page.locator("#host >> .tb-output").textContent(),
+			drawn,
+			"setting values must not re-run: the previous result stays until the host calls run()",
+		);
+		assert.match(String(await page.locator("#host >> .tb-status").textContent()), /inputs changed/);
+		await page.close();
+	});
+
+	it("prefills a card before anyone opens it", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const card = page.locator("tool-host[tool=percentiles][data-seed]");
+		await card.waitFor();
+
+		const before = await card.evaluate((el) => {
+			const host = el as HostApi;
+			host.values = { values: "1 2 3 4 5", method: "linear" };
+			return {
+				hasForm: Boolean(host.shadowRoot?.querySelector(".tb-form")),
+				snapshot: { ...host.values },
+			};
+		});
+		assert.equal(before.hasForm, false, "the card is still a facade");
+		assert.equal(before.snapshot.values, "1 2 3 4 5", "the getter already reflects the prefill");
+
+		await card.locator(".tb-facade").click();
+		await card.locator(".tb-form").waitFor();
+
+		const after = await card.evaluate((el) => {
+			const host = el as HostApi;
+			const root = host.shadowRoot;
+			return {
+				values: (root?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "",
+				method: host.values.method,
+				hasSelect: Boolean(root?.querySelector(".tb-select")),
+				stale: Boolean(root?.querySelector(".tb-output[data-stale]")),
+				status: root?.querySelector(".tb-status")?.textContent ?? "",
+			};
+		});
+		assert.equal(after.values, "1 2 3 4 5", "the form opens already filled");
+		assert.equal(after.hasSelect, false, "a card does not render the non-primary select");
+		assert.equal(after.method, "linear", "the prefill still lands on the hidden input, which is what Run will use");
+		assert.equal(after.stale, true, "the seeded default result is stale: it is not this form's answer");
+		assert.match(after.status, /inputs changed/);
+		await page.close();
+	});
+
+	it("runs when the host calls run() after setting values, including on a closed card", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const card = page.locator("tool-host[tool=utf8-bytes]").first();
+		await card.waitFor();
+
+		await card.evaluate(async (el) => {
+			const host = el as HostApi;
+			host.values = { text: "abc" };
+			await host.run();
+		});
+		await card.locator(".tb-output > *").first().waitFor({ timeout: 15_000 });
+
+		const result = await card.evaluate((el) => {
+			const root = (el as HTMLElement).shadowRoot;
+			return {
+				text: (root?.querySelector(".tb-textarea") as HTMLTextAreaElement | null)?.value ?? "",
+				stale: Boolean(root?.querySelector(".tb-output[data-stale]")),
+				fields: [...(root?.querySelectorAll(".tb-field") ?? [])].map((f) => f.textContent?.replace(/\s+/g, " ").trim()),
+			};
+		});
+		assert.equal(result.text, "abc", "run() used the prefilled values, not the defaults");
+		assert.equal(result.stale, false, "a completed run is current");
+		assert.ok(
+			result.fields.some((f) => f?.includes("3")),
+			`the result should be for "abc" (3 bytes), got: ${result.fields.join(" | ")}`,
+		);
+		await page.close();
+	});
+
+	it("still works on a tool that ships no samples", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/tool.html?id=utf8-bytes`, { waitUntil: "load" });
+		await page.locator("#host").scrollIntoViewIfNeeded();
+		await page.waitForSelector("#host >> .tb-form");
+		assert.equal(await page.locator("#host >> .tb-samples").count(), 0, "utf8-bytes is the plain path: no sample row");
+
+		await page.locator("#host").evaluate(async (el) => {
+			const host = el as HostApi;
+			host.values = { text: "A" };
+			await host.run();
+		});
+		await page.locator("#host >> .tb-output > *").first().waitFor({ timeout: 15_000 });
+		const text = await page.locator("#host >> .tb-textarea").inputValue();
+		assert.equal(text, "A");
+		assert.ok((await page.locator("#host >> .tb-output > *").count()) > 0, "run() after values still produces a result");
+		await page.close();
+	});
+});
+
 describe("page mode", () => {
 	it("renders the chart and keeps it — a late progress frame must not overwrite the result", async () => {
 		const page = await browser.newPage();
@@ -987,4 +1226,124 @@ describe("accessibility wiring", () => {
 		assert.equal(accents.themed, "#0b6b5f");
 		await page.close();
 	});
+});
+
+describe("host code highlight hook", () => {
+	/*
+	 * The expected source is JSON.stringify(JSON.parse('{"ok":true,"n":3}'), null, 2), written out
+	 * by hand from that spec, not captured from a run. The fixture's default is that object.
+	 */
+	const pretty = '{\n  "ok": true,\n  "n": 3\n}';
+
+	it("receives (source, lang) and puts the returned Node in the DOM", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html`, { waitUntil: "load" });
+		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+		const painted = await page.evaluate(() => {
+			const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+			const block = root?.querySelector(".tb-out-code");
+			const hook = root?.querySelector("[data-highlight-hook]");
+			return {
+				lang: block?.getAttribute("data-lang") ?? "",
+				hookLang: hook?.getAttribute("data-highlight-lang") ?? "",
+				text: hook?.textContent ?? "",
+				tokens: [...(hook?.querySelectorAll("[data-tok]") ?? [])].map((el) => ({
+					kind: el.getAttribute("data-tok"),
+					text: el.textContent,
+				})),
+				directTextChild: hook?.firstChild?.nodeType === Node.TEXT_NODE && hook.childNodes.length === 1,
+			};
+		});
+
+		assert.equal(painted.lang, "json", "the renderer still sets data-lang");
+		assert.equal(painted.hookLang, "json", "the hook must see the language tag");
+		assert.equal(painted.text, pretty, "the hook must see the source, and the Node must keep it readable");
+		assert.equal(painted.directTextChild, false, "the text node was replaced, not left as a single text child");
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "string" && t.text === '"ok"'),
+			`expected a string token for "ok", got ${JSON.stringify(painted.tokens)}`,
+		);
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "keyword" && t.text === "true"),
+			`expected a keyword token for true, got ${JSON.stringify(painted.tokens)}`,
+		);
+		assert.ok(
+			painted.tokens.some((t) => t.kind === "number" && t.text === "3"),
+			`expected a number token for 3, got ${JSON.stringify(painted.tokens)}`,
+		);
+		await page.close();
+	});
+
+	it("still renders readable plain text when the host omits the hook", async () => {
+		const page = await browser.newPage();
+		await page.goto(`${BASE}/index.html?code=plain`, { waitUntil: "load" });
+		const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+		await host.scrollIntoViewIfNeeded();
+		await host.locator(".tb-run").waitFor();
+		await host.locator(".tb-run").click();
+		await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+		const plain = await page.evaluate(() => {
+			const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+			const code = root?.querySelector(".tb-out-code code");
+			return {
+				lang: root?.querySelector(".tb-out-code")?.getAttribute("data-lang") ?? "",
+				text: code?.textContent ?? "",
+				hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+				onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+			};
+		});
+
+		assert.equal(plain.lang, "json");
+		assert.equal(plain.text, pretty, "without a hook the source is still there as preformatted text");
+		assert.equal(plain.hook, false, "the demo highlighter must not run");
+		assert.equal(plain.onlyText, true, "the existing path is a single text node inside <code>");
+		await page.close();
+	});
+
+	/*
+	 * A hook is host code, so the runtime has to keep drawing something readable whatever it is handed. Both
+	 * fallbacks are four lines in `renderCode` that anybody would assume work; neither had a test. The bench
+	 * installs a deliberately broken hook behind `?code=`, chosen inside `highlight.ts` so those instruments
+	 * stay out of the chunk the README publishes.
+	 */
+	for (const [mode, what] of [
+		["throw", "a hook that throws"],
+		["string", "a hook that returns a string instead of a node"],
+	] as const) {
+		it(`falls back to plain text when the host passes ${what}`, async () => {
+			const page = await browser.newPage();
+			const errors: string[] = [];
+			page.on("pageerror", (error) => errors.push(String(error)));
+			await page.goto(`${BASE}/index.html?code=${mode}`, { waitUntil: "load" });
+			const host = page.locator('tool-host[tool="json-code"][mode="page"]');
+			await host.scrollIntoViewIfNeeded();
+			await host.locator(".tb-run").click();
+			await host.locator(".tb-out-code").waitFor({ timeout: 15_000 });
+
+			const shown = await page.evaluate(() => {
+				const root = document.querySelector('tool-host[tool="json-code"][mode="page"]')?.shadowRoot;
+				const code = root?.querySelector(".tb-out-code code");
+				return {
+					text: code?.textContent ?? "",
+					hook: Boolean(root?.querySelector("[data-highlight-hook]")),
+					onlyText: Boolean(code && code.childNodes.length === 1 && code.firstChild?.nodeType === Node.TEXT_NODE),
+				};
+			});
+			// The same hand-derived expectation the no-hook test uses: a broken hook must be indistinguishable
+			// from no hook at all, which is a stronger claim than "something readable appeared".
+			assert.equal(shown.text, pretty, `a broken hook must fall back to the exact source: ${JSON.stringify(shown.text)}`);
+			assert.equal(shown.onlyText, true, "the fallback is a text node, not partially built markup");
+			assert.equal(shown.hook, false, "no hook marker, because the hook's output was discarded");
+			// A string return must not be parsed as markup, which is the reason the hook returns a Node.
+			assert.doesNotMatch(shown.text, /<em>/, "a string return must never reach the DOM as markup");
+			assert.deepEqual(errors, [], "a broken hook must not surface as an uncaught page error");
+			await page.close();
+		});
+	}
 });

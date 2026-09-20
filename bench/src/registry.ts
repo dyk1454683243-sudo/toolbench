@@ -15,7 +15,8 @@ import type { RegistryEntry } from "@toolbench/runtime";
 /*
  * Two directories: the real examples, and the bench's own fixtures. `fixtures/stress` is a tool that
  * misbehaves on purpose, so the runtime's failure paths are something you can click rather than
- * something described in a comment.
+ * something described in a comment. `fixtures/json-code` returns a `code` result so the host
+ * `highlight` hook has something to paint.
  */
 const manifests = {
 	...(import.meta.glob("../../tools/*/tool.json", { eager: true, import: "default" }) as Record<string, unknown>),

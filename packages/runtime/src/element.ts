@@ -34,11 +34,12 @@
  */
 import type { InputSpec, InputValues, Manifest, Output, Sample } from "@toolbench/sdk";
 import { el, fill } from "./dom.ts";
-import { render, unknownOutput } from "./render/index.ts";
+import { render, unknownOutput, type RenderOptions } from "./render/index.ts";
 import { ToolCrashError, ToolTimeoutError, WorkerUnavailableError } from "./protocol.ts";
 import { isSuperseded, Runner, type Runnable } from "./runner.ts";
 import { type ToolSource } from "./sources.ts";
 import { applyStyles } from "./styles.ts";
+import { applyPartialValues, coerce } from "./values.ts";
 
 export type Mode = "card" | "page" | "embed";
 
@@ -56,6 +57,14 @@ export interface ToolHostConfig {
 	rootMargin?: string;
 	/** Milliseconds of quiet before a typed change runs. Default 150. */
 	debounceMs?: number;
+	/**
+	 * Paint a `code` result with the host's own highlighter.
+	 *
+	 * The runtime does not bundle one: that would roughly double the package, and a host usually
+	 * already has one. Return a `Node`, not a string. A string-returning hook would need
+	 * `innerHTML`, which SECURITY.md forbids. Omit the hook to keep readable preformatted text.
+	 */
+	highlight?: (source: string, lang: string) => Node;
 }
 
 let config: ToolHostConfig | undefined;
@@ -75,6 +84,17 @@ export class ToolHost extends HTMLElement {
 	#loaded: Runnable | undefined;
 	#manifest: Manifest | undefined;
 	#values: InputValues = {};
+	/**
+	 * Values set before the manifest is here. `#prepare` applies them on top of defaults so a host
+	 * can prefill a card that has not listed tools yet.
+	 */
+	#queued: InputValues = {};
+	/** True after a host wrote `values`, so a later paint of a seed can mark that seed stale. */
+	#hostWroteValues = false;
+	/** Settles when the current `#prepare` finishes. `run()` waits on this so it does not no-op. */
+	#ready: Promise<void> = Promise.resolve();
+	/** In-flight activation. A host `run()` during a click or intersection must wait for it. */
+	#activation: Promise<void> | undefined;
 	#observer: IntersectionObserver | undefined;
 	#debounce: ReturnType<typeof setTimeout> | undefined;
 	#slowTimer: ReturnType<typeof setTimeout> | undefined;
@@ -108,6 +128,53 @@ export class ToolHost extends HTMLElement {
 		if (!this.#activated) this.#paint();
 	}
 
+	/**
+	 * Prefill the form. Partial is fine: unnamed inputs keep their current value.
+	 *
+	 * Validated the way typing is (clamp, refuse, truncate), and does not run the tool, even if the
+	 * tool set `autoRun`. An existing result goes stale. Works before activation, so a card can be
+	 * prefilled. A host that wants the tool to run calls `run()` afterwards.
+	 */
+	set values(partial: InputValues) {
+		if (partial == null || typeof partial !== "object" || Array.isArray(partial)) return;
+		if (!this.#manifest) {
+			this.#queued = { ...this.#queued, ...partial };
+			this.#hostWroteValues = true;
+			return;
+		}
+		this.#applyHostValues(partial);
+	}
+
+	/**
+	 * A copy of the current input values, including ones a compact card has not rendered.
+	 *
+	 * The setter is the primitive a host example button needs. The getter is here so a shareable
+	 * deep link can read the form the same way it writes it, without the host reaching into the
+	 * shadow root.
+	 */
+	get values(): InputValues {
+		return this.#manifest ? { ...this.#values } : { ...this.#queued };
+	}
+
+	/**
+	 * Run the tool. Opt-in: setting `values` never does this on its own.
+	 *
+	 * Waits for the manifest, activates if the form has not opened yet, then runs. So
+	 * `host.values = …; host.run()` works on a card nobody has clicked.
+	 *
+	 * ⚠️ Does NOT move focus, unlike the reader pressing Run. Focus follows the person who acted, and here
+	 * the person who acted is the page, not the reader: a host running a tool on load would otherwise yank
+	 * a reader out of whatever they were doing and drop them on a result they did not ask for. Pass
+	 * `{ focus: true }` when the call is the direct consequence of something the reader did, such as a
+	 * button the page itself renders.
+	 */
+	async run(options: { focus?: boolean } = {}): Promise<void> {
+		await this.#ready;
+		if (!this.#manifest) return;
+		await this.#activate();
+		await this.#run({ focusResult: options.focus === true });
+	}
+
 	get mode(): Mode {
 		const mode = this.getAttribute("mode");
 		return mode === "card" || mode === "embed" ? mode : "page";
@@ -136,7 +203,7 @@ export class ToolHost extends HTMLElement {
 			return;
 		}
 		this.#readInlineSeed();
-		void this.#prepare();
+		this.#ready = this.#prepare();
 	}
 
 	disconnectedCallback(): void {
@@ -147,6 +214,8 @@ export class ToolHost extends HTMLElement {
 		 */
 		this.#runner?.dispose();
 		this.#runner = undefined;
+		this.#loaded = undefined;
+		this.#activation = undefined;
 		this.#observer?.disconnect();
 		this.#observer = undefined;
 		if (this.#debounce) clearTimeout(this.#debounce);
@@ -158,7 +227,9 @@ export class ToolHost extends HTMLElement {
 		if (name === "tool") {
 			this.#activated = false;
 			this.#loaded = undefined;
-			void this.#prepare();
+			this.#activation = undefined;
+			this.#hostWroteValues = false;
+			this.#ready = this.#prepare();
 		} else {
 			this.#paint();
 		}
@@ -181,7 +252,17 @@ export class ToolHost extends HTMLElement {
 				return;
 			}
 			this.#manifest = manifest;
-			this.#values = Object.fromEntries(manifest.inputs.map((input) => [input.id, input.default]));
+			const defaults = Object.fromEntries(manifest.inputs.map((input) => [input.id, input.default]));
+			/*
+			 * A host may have written `values` while `list()` was in flight (queued) or in the gap
+			 * after `#manifest` was set but before this assignment (already merged into `#values`).
+			 * Resetting to defaults without that overlay would drop a prefill that arrived on time.
+			 */
+			const overlay: InputValues = { ...this.#queued };
+			this.#queued = {};
+			if (this.#hostWroteValues) Object.assign(overlay, this.#values);
+			this.#values = applyPartialValues(manifest.inputs, defaults, overlay);
+			if (Object.keys(overlay).length > 0) this.#hostWroteValues = true;
 			this.#paint();
 
 			if (this.mode === "card") return; // waits for a click
@@ -211,7 +292,18 @@ export class ToolHost extends HTMLElement {
 	}
 
 	async #activate(): Promise<void> {
-		if (this.#activated || !this.#manifest || !config) return;
+		if (this.#activation) return this.#activation;
+		if (this.#loaded && this.#runner) return;
+		if (!this.#manifest || !config) return;
+		this.#activation = this.#activateBody(config);
+		try {
+			await this.#activation;
+		} finally {
+			if (!this.#loaded) this.#activation = undefined;
+		}
+	}
+
+	async #activateBody(cfg: ToolHostConfig): Promise<void> {
 		this.#activated = true;
 		/*
 		 * ⚠️ The form is not painted until the module is here.
@@ -223,8 +315,8 @@ export class ToolHost extends HTMLElement {
 		this.#loading = true;
 		this.#paint();
 		try {
-			this.#loaded = await this.#resolve(config);
-			this.#runner = new Runner(config.workerFactory ? { workerFactory: config.workerFactory } : {});
+			this.#loaded = await this.#resolve(cfg);
+			this.#runner = new Runner(cfg.workerFactory ? { workerFactory: cfg.workerFactory } : {});
 			this.#loading = false;
 			this.#paint();
 			/*
@@ -238,8 +330,14 @@ export class ToolHost extends HTMLElement {
 			 * So the reader decides. A seeded result stays on screen as the starting point, and the tool
 			 * runs when Run is pressed — or as the reader types, but only for a tool that opted into
 			 * `autoRun` because it is genuinely instant.
+			 *
+			 * Skip the prompt when a host already prefilled: `#paint` has just marked the seed stale,
+			 * and overwriting that with "showing the default result" would lie about whose inputs these
+			 * are.
 			 */
-			this.#say(this.#seed ? "showing the default result — press Run to try your own" : "press Run");
+			if (!this.#hostWroteValues) {
+				this.#say(this.#seed ? "showing the default result — press Run to try your own" : "press Run");
+			}
 		} catch (error) {
 			this.#activated = false;
 			this.#loading = false;
@@ -293,6 +391,7 @@ export class ToolHost extends HTMLElement {
 		const runner = this.#runner;
 		if (!loaded || !runner) return;
 
+		this.#hostWroteValues = false;
 		this.#els.output?.removeAttribute("data-stale");
 		this.#els.run?.removeAttribute("data-attention");
 		this.#setBusy(true);
@@ -384,11 +483,14 @@ export class ToolHost extends HTMLElement {
 				{ class: "tb-body" },
 				mode === "page" ? null : el("p", { class: "tb-blurb" }, manifest.blurb),
 				this.#seed
-					? render(this.#seed, {
-							compact,
-							cardParts: this.cardParts,
-							...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
-						})
+					? render(
+							this.#seed,
+							withHostHighlight({
+								compact,
+								cardParts: this.cardParts,
+								...(manifest.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
+							}),
+						)
 					: null,
 				el("span", { class: "tb-facade-hint" }, this.#loading ? "loading…" : hint),
 			);
@@ -461,6 +563,12 @@ export class ToolHost extends HTMLElement {
 		fill(this.#root, frame);
 		this.#reapplyStyles();
 		if (this.#seed) this.#draw(this.#seed);
+		/*
+		 * A host that prefilled before the form existed has just had that seed drawn. The seed is
+		 * the defaults' result, not the prefilled inputs', so it is already stale. Mark it the
+		 * same way a keystroke would, now that the result area exists to carry the mark.
+		 */
+		if (this.#hostWroteValues) this.#markStale();
 	}
 
 	#reapplyStyles(): void {
@@ -628,17 +736,8 @@ export class ToolHost extends HTMLElement {
 	 * that first.
 	 */
 	#applySample(sample: Sample): void {
-		for (const spec of this.#manifest?.inputs ?? []) {
-			const value = sample.input[spec.id];
-			// Partial by design: an input the sample does not name keeps whatever the reader left in it.
-			if (value === undefined) continue;
-			const next = coerce(spec, value);
-			this.#values[spec.id] = next;
-			const control = this.#controls.get(spec.id);
-			if (!control) continue;
-			if (spec.type === "toggle") (control as HTMLInputElement).checked = Boolean(next);
-			else (control as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value = String(next);
-		}
+		this.#values = applyPartialValues(this.#manifest?.inputs ?? [], this.#values, sample.input);
+		this.#syncControls();
 		/*
 		 * It is tempting to clear `aria-invalid` here, on the control the last error named. Deliberately
 		 * not done: typing does not clear it either, and the error is still on screen, dimmed as stale.
@@ -656,6 +755,30 @@ export class ToolHost extends HTMLElement {
 		if (this.#manifest?.autoRun !== true) this.#say(`filled with "${sample.label}" — press Run`);
 	}
 
+	/**
+	 * Apply a host-set partial. Same write path as a sample, then stale, never a run.
+	 *
+	 * Typing on an `autoRun` tool would debounce-run. A host example button must not: `run()` is
+	 * how the host says it wanted that. Sharing `#inputChanged` here would make `values` a hidden
+	 * trigger on every instant tool.
+	 */
+	#applyHostValues(partial: InputValues): void {
+		this.#values = applyPartialValues(this.#manifest?.inputs ?? [], this.#values, partial);
+		this.#syncControls();
+		this.#hostWroteValues = true;
+		if (this.#els.output) this.#markStale();
+	}
+
+	#syncControls(): void {
+		for (const spec of this.#manifest?.inputs ?? []) {
+			const control = this.#controls.get(spec.id);
+			if (!control) continue;
+			const next = this.#values[spec.id];
+			if (spec.type === "toggle") (control as HTMLInputElement).checked = Boolean(next);
+			else (control as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value = String(next ?? "");
+		}
+	}
+
 	// --- output plumbing --------------------------------------------------------------------------
 
 	#draw(output: Output): void {
@@ -666,11 +789,14 @@ export class ToolHost extends HTMLElement {
 		try {
 			fill(
 				target,
-				render(output, {
-					compact,
-					cardParts: this.cardParts,
-					...(manifest?.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
-				}),
+				render(
+					output,
+					withHostHighlight({
+						compact,
+						cardParts: this.cardParts,
+						...(manifest?.cardFields !== undefined ? { cardFields: manifest.cardFields } : {}),
+					}),
+				),
 			);
 		} catch {
 			// A kind this build cannot draw: an old runtime meeting a newer tool.
@@ -751,6 +877,15 @@ export class ToolHost extends HTMLElement {
 }
 
 /**
+ * Thread the host highlighter into a render call without writing `highlight: undefined`.
+ * `exactOptionalPropertyTypes` refuses that, and omitting the key is what "no hook" means.
+ */
+function withHostHighlight(options: RenderOptions): RenderOptions {
+	const highlight = config?.highlight;
+	return highlight ? { ...options, highlight } : options;
+}
+
+/**
  * The inputs a compact card shows: every one marked `primary`, or the first if none is.
  *
  * ⚠️ This used to take exactly one, with `find` rather than `filter`, and that made `primary` a boolean
@@ -763,30 +898,6 @@ export class ToolHost extends HTMLElement {
 function primaryOnly(inputs: InputSpec[]): InputSpec[] {
 	const primary = inputs.filter((input) => input.primary === true);
 	return primary.length > 0 ? primary : inputs.slice(0, 1);
-}
-
-/**
- * A value arriving from outside the form, brought into what its spec allows.
- *
- * `validateManifest` already refuses a sample outside a number's range, so this is a backstop rather
- * than the guard: a manifest can reach a host without having been validated there, and at that point a
- * clamp is the only sane thing left. It is also the one place that knows how each input type stores its
- * value, which is why the number control's listener now shares it rather than keeping a second copy of
- * the same clamp.
- */
-function coerce(spec: InputSpec, value: string | number | boolean): string | number | boolean {
-	switch (spec.type) {
-		case "number": {
-			const n = Number(value);
-			return Number.isFinite(n) ? Math.min(spec.max, Math.max(spec.min, n)) : spec.default;
-		}
-		case "toggle":
-			return Boolean(value);
-		case "select":
-			return spec.options.some((option) => option.value === String(value)) ? String(value) : spec.default;
-		default:
-			return String(value);
-	}
 }
 
 /** A one-line description of a result, for the status region. Never the result itself. */

@@ -308,6 +308,19 @@ Things the validator will hold you to, and why:
   rate without a duration is not a smaller version of itself, it is a broken one. Mark none and a card
   shows the first input. Every input is shown on the full tool either way.
 * **`dir: "ltr"`** on anything that is not prose: bytes, code, patterns, identifiers.
+* **`maxLength` bounds typing and samples, not `default`.** The browser `maxlength` attribute stops a
+  reader typing past it, and `validateSamples` refuses an over-long sample because assigning `value`
+  walks past that attribute. The same check is not applied to `default`: adding it would reject
+  manifests contract v3 still accepts, which an additive change may not do. A long default still
+  loads. Keep it inside `maxLength` yourself if you set both.
+
+  ⚠️ **Why that gap stays open while duplicate sample values are refused**, since the two look like
+  opposite decisions taken in the same breath. A refusal is only worth its cost when the thing refused is
+  never what anybody wanted. Two buttons filling identical values are in that category: there is no tool for
+  which that is the intended behaviour, so refusing it can only catch a copy-paste. An over-long `default` is
+  not: an author may genuinely want the form pre-filled with text the reader is expected to trim, and
+  refusing it would break a manifest whose author chose it deliberately. The test is not whether a rule is
+  tighter, it is whether a correct tool could ever trip it.
 
 ## 4b. Sample inputs
 
@@ -362,7 +375,8 @@ the one that fails. If two samples make the same point, keep the clearer one and
 **A label says what the reader is about to see**, in two or three words. It sits on a small button in a
 row, so there is no room for a sentence, and "Two clusters" or "Definitions disagree" tell a reader what
 they are choosing. "Example 2" and "Test data" tell them nothing. Two samples may not share a label:
-identical buttons that do different things are not something anyone can choose between.
+identical buttons that do different things are not something anyone can choose between. They may not
+share an `input` either: two labels for the same values are two buttons that do the same thing.
 
 ### What a click does
 
@@ -382,6 +396,11 @@ did anything at all.
 there would crowd out the result the card exists to show. Samples appear in `page` and `embed` mode only,
 so do not design a tool whose form makes no sense without them.
 
+A host page can still put its own example buttons next to a card, or prefill a deep link, without
+those examples living in the manifest. `<tool-host>` has a `values` setter and a `run()` method for
+that. `values` is partial and does not run the tool. Ship `samples` for examples that belong to the
+tool. Leave page-specific ones to the host.
+
 ### What validation will hold you to
 
 `validateManifest` refuses the manifest, naming the field, when:
@@ -395,7 +414,10 @@ so do not design a tool whose form makes no sense without them.
 * a `select` value is not one of that input's options;
 * a sample's `input` sets nothing at all;
 * `samples` is present but empty, which is a key that says nothing;
-* two samples share a label.
+* two samples share a label. The message names the second colliding sample, not the list;
+* two samples fill the same `input` values, even with different labels. Comparison sorts the keys, so
+  `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` are the same payload. Two buttons that do the same thing are
+  the copy-paste the label check misses.
 
 ⚠️ **The runtime clamps a reader's out-of-range number, and validation rejects an author's.** That looks
 inconsistent until you see who each rule protects. A reader who types 9999 into a field that stops at 1000
@@ -408,6 +430,10 @@ another, and nobody would ever notice.
 `maxLength` is the sharpest case. It reaches the browser as the `maxlength` attribute, which constrains
 typing and nothing else. Filling a control from a sample assigns its value directly and walks straight
 past it, so an over-long sample would be the one route to a value the field itself says is impossible.
+
+An input's own `default` is not checked against `maxLength`. That is deliberate. Closing the gap would
+narrow a rule existing tools already pass, and this SDK has no warning path. `maxLength` bounds typing
+and samples. It does not bound `default`. Keep the default inside the bound yourself if you set both.
 
 ### What the build will hold you to
 
@@ -440,6 +466,12 @@ which is how one result holds two comparable sets: `tools/queue-explorer` uses "
 { kind: "text", text: "Converged after 4 iterations.", mono: false }
 
 { kind: "code", lang: "json", source: '{"ok":true}' }
+
+`code` is readable preformatted text with `data-lang` set. The runtime does not highlight it: a
+highlighter would roughly double `@toolbench/runtime`, and a host usually already has one. Pass
+`highlight?: (source: string, lang: string) => Node` to `defineToolHost` to replace the text node
+inside the block. The return type is a `Node` on purpose. A string would need `innerHTML`, which
+[SECURITY.md](../SECURITY.md) forbids. Omit the hook and the source stays plain text.
 
 { kind: "bytes",
   bytes: [72, 195, 169, 108],
@@ -623,7 +655,7 @@ choice of defaults visible to every reader who never presses Run.
 - [ ] Every `subset` case has a `why` that says what is deliberately not pinned
 - [ ] Defaults produce a real result, quickly: they are what a seeded card shows
 - [ ] If the tool ships `samples`: three or four, one of them malformed, every label two or three words
-      saying what the reader will see
+      saying what the reader will see, and no two fill the same values
 - [ ] `README.md` says what the tool does not handle
 - [ ] `node --test tools/cases.test.ts` passes
 - [ ] Looked at it in `pnpm bench`, in all three modes
@@ -642,3 +674,5 @@ choice of defaults visible to every reader who never presses Run.
 | Ignoring `ctx.signal` | A timeout terminates the worker, so the reader is fine, but every cancelled run costs a full worker restart | Check the signal every 1024 iterations |
 | `Math.random()` or `Date.now()` in `run` | Fixtures pass locally and fail in CI, or pass every second time | Take a seed as an input. See `tools/queue-explorer` |
 | A `subset` case with no `why` | The fixture runner refuses it | Say what is pinned and what is not, or make it exact |
+| Two samples with the same values and different labels | Two buttons that do the same thing | Change one payload or delete the copy. Validation refuses the second |
+| A `default` longer than `maxLength` | The form loads with more characters than the field says it accepts | Shorten the default. Validation does not catch this: `maxLength` bounds typing and samples only |

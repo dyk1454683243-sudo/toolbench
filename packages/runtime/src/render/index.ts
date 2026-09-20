@@ -28,6 +28,11 @@ export interface RenderOptions {
 	 * about the tool: the same tool is a small card in a sidebar and a large one leading a section.
 	 */
 	cardParts?: number;
+	/**
+	 * Host-supplied highlighter for `code` results. Must return a `Node`: a string would tempt
+	 * `innerHTML`, which this package does not use. Omit it and the source stays readable plain text.
+	 */
+	highlight?: (source: string, lang: string) => Node;
 }
 
 export function render(output: Output, options: RenderOptions = {}): HTMLElement {
@@ -37,7 +42,7 @@ export function render(output: Output, options: RenderOptions = {}): HTMLElement
 		case "text":
 			return renderText(output.text, output.mono === true);
 		case "code":
-			return renderCode(output.lang, output.source);
+			return renderCode(output.lang, output.source, options.highlight);
 		case "table":
 			return renderTable(output, options);
 		case "series":
@@ -141,15 +146,27 @@ function renderText(text: string, mono: boolean): HTMLElement {
 	return el("div", { class: "tb-out-text" }, el(mono ? "pre" : "p", { class: mono ? "tb-mono" : "" }, text));
 }
 
-function renderCode(lang: string, source: string): HTMLElement {
+function renderCode(lang: string, source: string, highlight?: (source: string, lang: string) => Node): HTMLElement {
 	/*
-	 * No syntax highlighting, deliberately. A highlighter is a large dependency and a host site
-	 * usually already has one; the `data-lang` hook lets it style this block if it wants to.
+	 * No bundled highlighter, deliberately. A highlighter is a large dependency and a host site
+	 * usually already has one. `data-lang` stays for CSS. If the host passed `highlight`, that
+	 * function's Node replaces the text node inside `<code>`. The return type is Node on purpose:
+	 * a string would need innerHTML, which SECURITY.md forbids.
 	 */
+	let body: Node | string = source;
+	if (highlight) {
+		try {
+			const node = highlight(source, lang);
+			if (node instanceof Node) body = node;
+		} catch {
+			// A hook that throws must not blank the result. Plain text is still readable.
+			body = source;
+		}
+	}
 	return el(
 		"div",
 		{ class: "tb-out-code", "data-lang": lang },
-		el("pre", {}, el("code", { class: `language-${lang}` }, source)),
+		el("pre", {}, el("code", { class: `language-${lang}` }, body)),
 	);
 }
 
