@@ -36,6 +36,12 @@ const BUDGETS = [
 	 * unrelated change would have failed here for reasons that had nothing to do with it.
 	 */
 	/*
+	 * Raised from 19_500 to 20_000 in the commit that spent it: the element honouring `status` costs 649
+	 * gzipped bytes, measured, which is 137 over the ceiling the chart split had just set. Worth recording
+	 * that the two changes together leave the figure LOWER than before either: 20,360 before the split,
+	 * 19,637 after both, while gaining the feature. The two bench fixtures this added cost nothing here,
+	 * because fixture manifests live in their own chunk since the fixture split.
+	 *
 	 * ⚠️ Lowered from 20_500 to 19_500 by splitting the chart renderer out, measured at 1,372 bytes.
 	 * A ceiling that only ever rises stops being a constraint, so when a change genuinely removes weight
 	 * the number should follow it down. 18,988 measured, leaving 512.
@@ -45,8 +51,14 @@ const BUDGETS = [
 	 * container and three rules so a card's chart keeps legible labels when the card is narrower than the
 	 * chart's own viewBox; and the `parts` attribute plumbing. 19_500 left 46 bytes of headroom, which is
 	 * not headroom.
+	 *
+	 * Raised from 20_500 to 21_500 in the commit that spent it. What it bought: the element honouring
+	 * `status` (retired refuses to activate and paints an explanation plus links; deprecated paints a
+	 * host-stylable marker and is not a live card), plus two bench fixture manifests. Those JSON files
+	 * land in this chunk because `registry.ts` imports every `tool.json` eagerly, the same way
+	 * percentiles' samples did. 20_500 left 21 bytes of headroom (20,521 measured), which is not headroom.
 	 */
-	{ label: "runtime + host wiring", pattern: /^boot-[^/]+\.js$/, budget: 19_500 },
+	{ label: "runtime + host wiring", pattern: /^boot-[^/]+\.js$/, budget: 20_000 },
 	/*
 	 * The bench's theme switch, split out of `boot` on purpose. It is a test instrument, so it must not
 	 * be counted in the figure the README quotes for what a consumer pays. Tracked so it cannot grow

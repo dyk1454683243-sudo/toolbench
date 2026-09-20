@@ -84,6 +84,21 @@
 			<code>?plain-code</code> to see the path a host that omits the hook still gets.
 		</p>
 		<tool-host tool="json-code" mode="page"></tool-host>
+		<h2 id="retired-note">Retired and deprecated</h2>
+		<p class="note">
+			A manifest can say <code>status: "retired"</code> or <code>"deprecated"</code>. Retired does
+			not run: the page explains and points at the replacement, so a bookmarked URL is not a 404
+			and is not a silent run. Deprecated still runs, with a marker a host can style, and it is
+			not offered as a live card. These are the states nobody opens unless they are on the page.
+		</p>
+		<div id="lifecycle">
+			<tool-host tool="retired" mode="page"></tool-host>
+			<tool-host tool="deprecated" mode="page"></tool-host>
+		</div>
+		<div class="grid" id="lifecycle-cards">
+			<tool-host tool="retired" mode="card"></tool-host>
+			<tool-host tool="deprecated" mode="card"></tool-host>
+		</div>
 
 		<h2>A tool that does not exist</h2>
 		<p class="note">A host will get this wrong eventually, so it has to fail legibly.</p>

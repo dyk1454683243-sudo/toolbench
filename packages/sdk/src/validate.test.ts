@@ -116,6 +116,25 @@ describe("validateManifest", () => {
 		assert.equal(validateManifest(m).card, "live");
 	});
 
+	it("accepts deprecated and retired, which default card stays info", () => {
+		assert.equal(validateManifest({ ...good(), status: "deprecated" }).status, "deprecated");
+		assert.equal(validateManifest({ ...good(), status: "retired" }).status, "retired");
+	});
+
+	it("rejects a live card when the tool is deprecated", () => {
+		failsWith((m) => {
+			m.card = "live";
+			m.status = "deprecated";
+		}, "card", "only a live tool");
+	});
+
+	it("rejects a live card when the tool is retired", () => {
+		failsWith((m) => {
+			m.card = "live";
+			m.status = "retired";
+		}, "card", "only a live tool");
+	});
+
 	// --- samples: checked against the inputs they claim to fill ----------------------------------
 	it("accepts samples that name real inputs", () => {
 		const m = validateManifest({ ...good(), samples: [{ label: "Middle", input: { value: 5 } }] });

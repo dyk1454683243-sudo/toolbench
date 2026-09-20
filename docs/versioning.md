@@ -217,12 +217,14 @@ be memorable.
 A tool, unlike the contract, is allowed to reach the end of its life.
 
 ```jsonc
-{ "status": "deprecated" }   // still runs; the host shows it is on the way out
-{ "status": "retired" }      // does not run; the host explains and links elsewhere
+{ "status": "deprecated" }   // still runs; the element shows a marker a host can style
+{ "status": "retired" }      // does not run; the element explains and renders links
 ```
 
 Prefer `retired` over deleting. A URL that someone has bookmarked, or that is linked from a post, should
 explain what happened rather than return a 404. If the tool is replaced, put the replacement in `links`.
+The runtime honours both values: retired refuses to activate, and deprecated is refused as a live card.
+See [authoring-a-tool.md §3b](authoring-a-tool.md#3b-retiring-a-tool).
 
 ## 9. Version history
 

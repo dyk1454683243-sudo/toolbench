@@ -228,6 +228,12 @@ export interface Manifest {
 		 */
 		thread?: "main" | "worker";
 	};
+	/**
+	 * Lifecycle. Default `live`.
+	 *
+	 * `deprecated` still runs, with a visible marker a host can style, and is refused as a live card.
+	 * `retired` does not run: the element explains and renders `links`, so a bookmarked URL is not a 404.
+	 */
 	status?: "live" | "deprecated" | "retired";
 	/** How the tool appears in a compact slot: runnable, a summary that links out, or not at all. */
 	card?: "live" | "info" | "none";

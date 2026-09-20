@@ -8,6 +8,7 @@ Writing, testing and shipping a tool, start to finish. Read
 1. [What a tool is](#1-what-a-tool-is)
 2. [Walkthrough: build one](#2-walkthrough-build-one)
 3. [The manifest, field by field](#3-the-manifest-field-by-field)
+   - [3b. Retiring a tool](#3b-retiring-a-tool)
 4. [Inputs](#4-inputs)
    - [4b. Sample inputs](#4b-sample-inputs)
 5. [Results](#5-results)
@@ -272,14 +273,42 @@ repository was found by looking at the thing, not by reasoning about it.
 | `inputs` | yes | At least one. A tool with none is a constant. |
 | `samples` | no | Labelled example inputs, `{ label, input }`, drawn as a row of buttons under the form. `input` is keyed by input id and may be partial. See §4b. |
 | `kinds` | yes | Every kind `run` can return, `"error"` included. Both halves are checked by tests. |
-| `card` | no | `"info"` (default) shows the blurb only, `"live"` makes it runnable, `"none"` keeps it off cards. `"live"` requires `["pure"]`. |
+| `card` | no | `"info"` (default) shows the blurb only, `"live"` makes it runnable, `"none"` keeps it off cards. `"live"` requires `["pure"]`, and is refused when `status` is not `"live"`. |
 | `cardFields` | no | How many fields a compact result shows before "+N more". Default 4. |
 | `autoRun` | no | Run as the reader types. Default off. Refused for worker tools. Only for genuinely instant tools. |
 | `timeoutMs` | no | 100 to 30000. Worker only; declaring it on the main thread is an error, because there is nothing there to terminate. Default 5000. |
-| `status` | no | `"live"` (default), `"deprecated"`, `"retired"`. |
+| `status` | no | `"live"` (default), `"deprecated"`, `"retired"`. See §3b. |
 | `help` | no | Path to Markdown, relative to the tool directory. |
 | `tags` | no | Free-form strings for the host's own grouping. |
-| `links` | no | `{ label, href }`. Specs, source, further reading. |
+| `links` | no | `{ label, href }`. Specs, source, further reading. For a retired tool, this is the way onward. |
+
+## 3b. Retiring a tool
+
+Prefer `retired` over deleting. A URL someone has bookmarked, or that is linked from a post, should
+explain what happened rather than return 404.
+
+`deprecated` still runs. The element shows a visible marker. A host styles it from outside the shadow
+root: `data-status="deprecated"` is set on `<tool-host>`, and the marker colours read `--tb-mark-fg`
+and `--tb-mark-bg`. It is not a live card. A landing page must not present a tool on the way out as
+current. The page and embed still work, so a reader who already has the URL can finish what they were
+doing.
+
+`retired` does not run. The element refuses to activate: no form, no Run, and no tool code is fetched.
+It explains, and it renders `links` as the way onward. If there is a replacement, put it in `links`.
+That is what a bookmarked URL is for: this moved, and here is where to go, rather than a silent 404 or
+a tool that claims to be gone and then runs anyway.
+
+```jsonc
+{
+  "status": "retired",
+  "links": [
+    { "label": "Use the new converter", "href": "/tools/new-converter/" }
+  ]
+}
+```
+
+Do not keep `card: "live"` on either. Validation refuses it. A compact slot that opens a retired tool,
+or that presents a deprecated one as current, is a field that lies.
 
 ## 4. Inputs
 

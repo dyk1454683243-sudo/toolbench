@@ -13,10 +13,21 @@ installThemeControl();
  */
 const manifests = await source.list();
 
+/*
+ * Only live tools go in the landing-page grids. A deprecated tool still runs on its own page,
+ * but a card among current tools presents it as current, which is the thing status exists to
+ * prevent. Retired and deprecated have their own section further down the page, so those
+ * states get looked at rather than remaining a field nobody ever opens.
+ */
+const liveIds = toolIds.filter((id) => {
+	const manifest = manifests.find((m) => m.id === id);
+	return (manifest?.status ?? "live") === "live";
+});
+
 for (const [containerId, mode] of [["cards", "card"], ["themed", "card"]] as const) {
 	const container = document.getElementById(containerId);
 	if (!container) continue;
-	for (const id of toolIds) {
+	for (const id of liveIds) {
 		const host = document.createElement("tool-host");
 		host.setAttribute("tool", id);
 		host.setAttribute("mode", mode);
